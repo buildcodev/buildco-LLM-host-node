@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.image = NSImage(systemSymbolName: "square.grid.3x1.below.line.grid.1x2", accessibilityDescription: "Espalier")
             ?? NSImage(systemSymbolName: "rectangle.split.2x2", accessibilityDescription: "Espalier")
         let menu = NSMenu()
+        menu.autoenablesItems = false
         menu.delegate = self
         statusItem.menu = menu
 
@@ -70,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (title, command) in arranging { menu.addItem(commandItem(title, command, shortcuts)) }
 
         let views = NSMenu()
+        views.autoenablesItems = false
         let saved = manager.savedViews
         for slot in 1...9 {
             let go = commandItem("Go to View \(slot)", .view(slot), shortcuts)

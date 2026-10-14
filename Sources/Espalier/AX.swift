@@ -128,6 +128,14 @@ enum WindowList {
         }
     }
 
+    /// One window's bounds from the window server: cheap, and never blocks on the window's app.
+    static func bounds(of id: CGWindowID) -> CGRect? {
+        guard let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]],
+              let boundsDict = info.first?[kCGWindowBounds as String] as? NSDictionary
+        else { return nil }
+        return CGRect(dictionaryRepresentation: boundsDict as CFDictionary)
+    }
+
     static func onScreenIDs() -> Set<CGWindowID> {
         Set(onScreen().map(\.id))
     }

@@ -75,6 +75,9 @@ final class WindowManager: NSObject {
         guard !started else { return }
         started = true
         tracker.excludedBundleIDs = Set(config.excludedBundleIDs)
+        // A hung app must not stall Espalier (and with it the event tap). Setting the timeout
+        // on the system-wide element changes the default for every element.
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
         tracker.delegate = self
         eventTap.handler = self
         if !eventTap.start() { problems.append("Couldn't watch the mouse: docking and gap resizing are off") }
@@ -257,13 +260,13 @@ final class WindowManager: NSObject {
     /// Puts a display's windows where its layout says, animating camera moves.
     private func apply(_ uuid: String, animated: Bool) {
         guard let display = findDisplay(uuid), let state = states[uuid] else { return }
-        let old = presentations[uuid]
+        let previous = presentations[uuid]
         let new = state.presentation(screen: display.visibleFrame, metrics: config.metrics, minSizes: minSizes)
         presentations[uuid] = new
         defer { onChange?() }
 
-        let cameraMoved = old.map { $0.target != new.target || !$0.camera.isApproximatelyEqual(to: new.camera, tolerance: 1e-6) } ?? false
-        guard animated, cameraMoved, config.animationDuration > 0, let old, let overlay = overlays[uuid] else {
+        let cameraMoved = previous.map { $0.target != new.target || !$0.camera.isApproximatelyEqual(to: new.camera, tolerance: 1e-6) } ?? false
+        guard animated, cameraMoved, config.animationDuration > 0, let old = previous, let overlay = overlays[uuid] else {
             place(new, state: state, display: display)
             overlays[uuid]?.update(tiles: new.tiles, strips: new.tabStrips)
             return
@@ -685,12 +688,15 @@ extension WindowManager: WindowTrackerDelegate {
 extension WindowManager: EventTapHandler {
     func mouseDown(at cgPoint: CGPoint, clickCount: Int, flags: CGEventFlags) -> Bool {
         guard started else { return false }
+        // A press always starts fresh, even if the tap missed the last release.
+        drag = nil
         let point = Point(cgPoint)
         if let top = WindowList.frontmost(at: cgPoint, excludingPID: getpid()) {
             // A window (or the Dock, a menu…) is under the pointer. Watch a managed window in
-            // case this press turns into a move or a resize.
-            if top.layer == 0, let w = tracker.windows[top.id], let uuid = displayUUID(of: top.id), let frame = w.frame {
-                drag = DragSession(window: top.id, startFrame: frame, sourceDisplay: uuid)
+            // case this press turns into a move or a resize. The window server's bounds avoid
+            // a blocking AX call inside the tap.
+            if top.layer == 0, tracker.windows[top.id] != nil, let uuid = displayUUID(of: top.id) {
+                drag = DragSession(window: top.id, startFrame: Rect(top.bounds), sourceDisplay: uuid)
             }
             return false
         }
@@ -736,7 +742,7 @@ extension WindowManager: EventTapHandler {
         }
         guard var session = drag, now - session.lastCheck > 0.04 else { return false }
         session.lastCheck = now
-        if session.mode == .pending, let frame = tracker.windows[session.window]?.frame {
+        if session.mode == .pending, let frame = WindowList.bounds(of: session.window).map(Rect.init) {
             if abs(frame.width - session.startFrame.width) > 1 || abs(frame.height - session.startFrame.height) > 1 {
                 session.mode = .resizing
             } else if abs(frame.x - session.startFrame.x) > 2 || abs(frame.y - session.startFrame.y) > 2 {

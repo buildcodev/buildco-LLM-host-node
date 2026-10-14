@@ -262,7 +262,7 @@ final class OverlayController {
 
     var isAnimating: Bool { motionView.animating }
 
-    /// Shows `proxies` moving over the wallpaper for `duration` seconds, then fades out.
+    /// Shows `proxies` moving over the wallpaper for `duration` seconds, then hides the layer.
     func animate(_ proxies: [Proxy], useSnapshots: Bool, duration: Double, completion: @escaping () -> Void) {
         finishAnimation()
         motionView.proxies = proxies

@@ -38,7 +38,9 @@ final class StateStore {
         } catch {
             logger.error("Couldn't read saved layouts: \(error.localizedDescription, privacy: .public)")
             // Keep the unreadable file for inspection rather than overwriting it silently.
-            try? FileManager.default.moveItem(at: stateURL, to: directory.appendingPathComponent("state.unreadable.json"))
+            let keep = directory.appendingPathComponent("state.unreadable.json")
+            try? FileManager.default.removeItem(at: keep)
+            try? FileManager.default.moveItem(at: stateURL, to: keep)
             return nil
         }
     }
