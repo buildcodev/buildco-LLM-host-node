@@ -209,3 +209,42 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(wide.nearestEdge(to: Point(x: 500, y: 5)), .top)
     }
 }
+
+final class SiblingRangeDockingTests: XCTestCase {
+    /// row(D, 1, 2, 3)
+    func makeRow() -> Layout {
+        var layout = Layout()
+        layout.dock(1, beside: .node(layout.desktopID), edge: .right)
+        layout.dock(2, beside: .node(layout.group(containing: 1)!.id), edge: .right)
+        layout.dock(3, beside: .node(layout.group(containing: 2)!.id), edge: .right)
+        return layout
+    }
+
+    func testDockingAlongTheRangeAxisInsertsBesideIt() {
+        var layout = makeRow()
+        let ids = [layout.group(containing: 1)!.id, layout.group(containing: 2)!.id]
+        let before = LayoutGeometry.rects(layout.root)
+        let rangeWidth = before[ids[0]]!.width + before[ids[1]]!.width
+        layout.dock(9, beside: .siblings(split: layout.root.id, ids: ids), edge: .right, share: 0.5)
+        XCTAssertEqual(layout.shape, "row(D,1,2,9,3)")
+        let after = LayoutGeometry.rects(layout.root)
+        // The range and the new window share the range's old width; everything else is untouched.
+        XCTAssertEqual(after[layout.group(containing: 9)!.id]!.width, rangeWidth / 2, accuracy: 1e-9)
+        XCTAssertEqual(after[layout.group(containing: 3)!.id]!.width, before[layout.group(containing: 3)!.id]!.width, accuracy: 1e-9)
+    }
+
+    func testDockingAcrossTheRangeAxisWrapsIt() {
+        var layout = makeRow()
+        let ids = [layout.group(containing: 1)!.id, layout.group(containing: 2)!.id]
+        layout.dock(9, beside: .siblings(split: layout.root.id, ids: ids), edge: .top, share: 0.3)
+        XCTAssertEqual(layout.shape, "row(D,col(9,row(1,2)),3)")
+    }
+
+    func testDockingBesideARangeContainingTheDraggedWindow() {
+        var layout = makeRow()
+        let ids = [layout.group(containing: 1)!.id, layout.group(containing: 2)!.id]
+        layout.dock(1, beside: .siblings(split: layout.root.id, ids: ids), edge: .bottom, share: 0.5)
+        XCTAssertEqual(Set(layout.allWindows), [1, 2, 3])
+        XCTAssertEqual(layout.allWindows.count, 3)
+    }
+}
