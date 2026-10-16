@@ -116,7 +116,13 @@ final class WindowTracker: NSObject {
                 }
             }
         }
-        for id in windows.keys where !seen.contains(id) && !onScreen.contains(id) {
+        // AX only lists windows on the current Space, so a window it no longer lists may just
+        // be on another one. It's gone only once the window server no longer has it either.
+        let missing = windows.keys.filter { !seen.contains($0) && !onScreen.contains($0) }
+        guard !missing.isEmpty else { return }
+        let existing = WindowList.allIDs()
+        for id in missing where !existing.contains(id) {
+            logger.debug("Window \(id) no longer exists")
             remove(id)
         }
     }

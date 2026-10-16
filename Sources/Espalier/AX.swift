@@ -140,6 +140,12 @@ enum WindowList {
         Set(onScreen().map(\.id))
     }
 
+    /// Every window the window server has, on any Space, on screen or not.
+    static func allIDs() -> Set<CGWindowID> {
+        guard let info = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return Set(info.compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value })
+    }
+
     /// The frontmost window at a point, ignoring our own windows. Menus, the Dock and
     /// other non-zero layers are returned too, so callers can leave clicks on them alone.
     static func frontmost(at point: CGPoint, excludingPID: pid_t) -> Entry? {

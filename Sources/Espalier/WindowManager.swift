@@ -379,6 +379,7 @@ final class WindowManager: NSObject {
             for node in state.layout.root.allNodes {
                 guard case .group(let g) = node else { continue }
                 for slot in g.slots where slot.suspended != isAway(slot.window) {
+                    logger.debug("Window \(slot.window) is \(self.isAway(slot.window) ? "away" : "back", privacy: .public)")
                     state.setSuspended(slot.window, isAway(slot.window))
                     changed = true
                 }
