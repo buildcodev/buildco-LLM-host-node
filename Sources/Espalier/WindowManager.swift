@@ -465,6 +465,7 @@ final class WindowManager: NSObject {
         switch command {
         case .arrange:
             let eligible = Set(state.floating.keys.filter { !isAway($0) && tracker.windows[$0]?.resizable == true })
+            logger.info("Arranging \(eligible.count) floating window(s) on \(uuid, privacy: .public)")
             state.arrange(screen: screen, metrics: metrics, only: eligible)
         case .relayout:
             for id in state.managedWindows { minSizes[id] = nil }

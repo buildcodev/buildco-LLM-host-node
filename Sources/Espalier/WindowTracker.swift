@@ -160,7 +160,10 @@ final class WindowTracker: NSObject {
         guard AXObserverCreate(pid, axCallback, &created) == .success, let observer = created else { return }
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         // An app that's still launching refuses observers; the next reconcile retries it.
-        guard AXObserverAddNotification(observer, element, kAXWindowCreatedNotification as CFString, refcon) == .success else { return }
+        guard AXObserverAddNotification(observer, element, kAXWindowCreatedNotification as CFString, refcon) == .success else {
+            logger.debug("\(bundleID, privacy: .public) can't be observed yet")
+            return
+        }
         for name in WindowTracker.appNotifications where name != kAXWindowCreatedNotification {
             AXObserverAddNotification(observer, element, name as CFString, refcon)
         }
@@ -193,6 +196,7 @@ final class WindowTracker: NSObject {
             AXObserverAddNotification(observation.observer, element, name as CFString, refcon)
         }
         windows[id] = window
+        logger.debug("Tracking window \(id) of \(bundleID, privacy: .public)")
         delegate?.trackerAdded(window)
     }
 
