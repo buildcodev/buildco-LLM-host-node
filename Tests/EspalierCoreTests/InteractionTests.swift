@@ -189,3 +189,21 @@ struct ArrangeFilterTests {
         #expect(s.isDocked(2))
     }
 }
+
+struct FrameChangeTests {
+    let start = Rect(x: 100, y: 100, width: 800, height: 600)
+
+    @Test func testRoundingIsNoChange() {
+        #expect(FrameChange(from: start, to: Rect(x: 101, y: 99, width: 800.5, height: 600)) == .none)
+    }
+
+    @Test func testMovingKeepsTheSize() {
+        #expect(FrameChange(from: start, to: Rect(x: 2267, y: 682, width: 800, height: 600)) == .moved)
+        #expect(FrameChange(from: start, to: Rect(x: 100, y: 104, width: 800, height: 600)) == .moved)
+    }
+
+    @Test func testDraggingTheLeftBorderIsAResize() {
+        #expect(FrameChange(from: start, to: Rect(x: 60, y: 100, width: 840, height: 600)) == .resized)
+        #expect(FrameChange(from: start, to: Rect(x: 100, y: 100, width: 800, height: 650)) == .resized)
+    }
+}

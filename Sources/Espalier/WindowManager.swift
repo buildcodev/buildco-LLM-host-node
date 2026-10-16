@@ -556,7 +556,17 @@ final class WindowManager: NSObject {
     private func finishDrag(_ session: DragSession, at point: Point, flags: CGEventFlags) {
         guard let w = tracker.windows[session.window], let frame = w.frame else { return }
         let metrics = config.metrics
-        switch session.mode {
+        var mode = session.mode
+        if mode == .pending {
+            // A quick drag can end before the window server reports the window moving.
+            switch FrameChange(from: session.startFrame, to: frame) {
+            case .none: return
+            case .moved: mode = .moving
+            case .resized: mode = .resizing
+            }
+        }
+        logger.debug("Drag of \(w.id) ended: \(String(describing: mode), privacy: .public) from \(session.startFrame, privacy: .public) to \(frame, privacy: .public)")
+        switch mode {
         case .pending:
             return
         case .resizing:
@@ -582,6 +592,7 @@ final class WindowManager: NSObject {
                 action = state.dropAction(for: w.id, at: point, presentation: p, metrics: metrics)
             }
             if crossing, action == .none { action = .float }
+            logger.info("Dropped \(w.id) at \(point.x, privacy: .public),\(point.y, privacy: .public): \(String(describing: action), privacy: .public)")
             state.applyDrop(action, window: w.id, frame: frame, screen: target.visibleFrame, metrics: metrics)
             if state.windowInfo[w.id] == nil { state.windowInfo[w.id] = w.info }
             states[target.uuid] = state
@@ -743,10 +754,10 @@ extension WindowManager: EventTapHandler {
         guard var session = drag, now - session.lastCheck > 0.04 else { return false }
         session.lastCheck = now
         if session.mode == .pending, let frame = WindowList.bounds(of: session.window).map(Rect.init) {
-            if abs(frame.width - session.startFrame.width) > 1 || abs(frame.height - session.startFrame.height) > 1 {
-                session.mode = .resizing
-            } else if abs(frame.x - session.startFrame.x) > 2 || abs(frame.y - session.startFrame.y) > 2 {
-                session.mode = .moving
+            switch FrameChange(from: session.startFrame, to: frame) {
+            case .none: break
+            case .moved: session.mode = .moving
+            case .resized: session.mode = .resizing
             }
         }
         drag = session

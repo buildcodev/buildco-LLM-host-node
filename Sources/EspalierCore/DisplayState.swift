@@ -23,6 +23,23 @@ public enum DropAction: Equatable, Sendable {
     case none
 }
 
+/// How a window changed while the user held the mouse down on it.
+public enum FrameChange: Equatable, Sendable {
+    case none, moved, resized
+
+    /// A size change beyond rounding is a resize, even if the origin moved too (dragging
+    /// the left or top border moves it). Otherwise a moved origin is a move.
+    public init(from old: Rect, to new: Rect) {
+        if abs(new.width - old.width) > 1 || abs(new.height - old.height) > 1 {
+            self = .resized
+        } else if abs(new.x - old.x) > 2 || abs(new.y - old.y) > 2 {
+            self = .moved
+        } else {
+            self = .none
+        }
+    }
+}
+
 /// One display's layout, camera and floating windows.
 public struct DisplayState: Codable, Equatable, Sendable {
     public var layout: Layout
