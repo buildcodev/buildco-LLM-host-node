@@ -186,13 +186,18 @@ final class WindowManager: NSObject {
             for id in mapping.values {
                 live[id] = nil
                 state.windowInfo[id] = tracker.windows[id]?.info
+                // Floating windows are only moved when parked, so one stranded by a crash
+                // goes back to where it last floated.
+                if let remembered = state.floating[id], let w = tracker.windows[id], let frame = w.frame {
+                    state.floating[id] = rescueIfStranded(w, frame: frame, on: display, preferring: remembered)
+                }
             }
             states[display.uuid] = state
         }
         // Every other window floats where it is.
         for id in live.keys.sorted() {
             guard let w = tracker.windows[id], let frame = w.frame, let display = displays.best(for: frame) else { continue }
-            states[display.uuid]?.floating[id] = frame
+            states[display.uuid]?.floating[id] = rescueIfStranded(w, frame: frame, on: display)
             states[display.uuid]?.windowInfo[id] = w.info
         }
         refreshPresence(apply: false)
@@ -324,6 +329,18 @@ final class WindowManager: NSObject {
         lastSet[id] = CACurrentMediaTime()
         w.element.setPosition(origin)
         parked.insert(id)
+    }
+
+    /// A window that arrives almost entirely off screen, like one parked when Espalier
+    /// crashed or was force quit, is moved back into view so it can't be lost.
+    private func rescueIfStranded(_ w: TrackedWindow, frame: Rect, on display: Display, preferring remembered: Rect? = nil) -> Rect {
+        let visible = frame.intersection(display.visibleFrame)
+        guard visible.width < 40 || visible.height < 40 else { return frame }
+        let rescued = (remembered ?? frame).clamped(into: display.visibleFrame)
+        logger.info("Bringing stranded window \(w.id) back on screen at \(rescued, privacy: .public)")
+        lastSet[w.id] = CACurrentMediaTime()
+        withoutEnhancedUserInterface(pid: w.pid) { w.element.setFrame(rescued.cgRect) }
+        return rescued
     }
 
     /// Apps with AXEnhancedUserInterface on (set by assistive tools) animate every frame
@@ -613,7 +630,8 @@ extension WindowManager: WindowTrackerDelegate {
         guard started, !restoring else { return }
         if window.isMinimized { minimized.insert(window.id) }
         guard displayUUID(of: window.id) == nil, let frame = window.frame, let display = displays.best(for: frame) else { return }
-        states[display.uuid]?.adoptFloating(window.id, frame: frame, info: window.info)
+        let rescued = rescueIfStranded(window, frame: frame, on: display)
+        states[display.uuid]?.adoptFloating(window.id, frame: rescued, info: window.info)
         // Make sure the desktop it opened on is big enough to show it.
         states[display.uuid]?.reveal(window.id, screen: display.visibleFrame, metrics: config.metrics, minSizes: minSizes)
         apply(display.uuid, animated: true)
