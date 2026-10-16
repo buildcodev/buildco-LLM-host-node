@@ -658,8 +658,18 @@ extension WindowManager: WindowTrackerDelegate {
         if state.isDocked(id) {
             // Something other than the user moved a docked window: put it back.
             scheduleReapply(uuid)
-        } else if state.isFloating(id), !parked.contains(id), let frame = tracker.windows[id]?.frame {
-            states[uuid]?.noteFloatingFrame(id, frame)
+        } else if state.isFloating(id), !parked.contains(id), let w = tracker.windows[id], let frame = w.frame {
+            if let display = displays.best(for: frame), display.uuid != uuid, states[display.uuid] != nil {
+                // It reached another display some other way than a drag we followed (a quick
+                // flick, a keyboard shortcut, the app itself): it floats there now.
+                logger.info("Floating window \(id) moved to display \(display.uuid, privacy: .public)")
+                states[uuid]?.forget(id)
+                states[display.uuid]?.adoptFloating(id, frame: frame, info: w.info)
+                apply(uuid, animated: false)
+                apply(display.uuid, animated: true)
+            } else {
+                states[uuid]?.noteFloatingFrame(id, frame)
+            }
             scheduleSave()
         }
     }
