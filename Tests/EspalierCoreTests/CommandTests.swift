@@ -1,83 +1,84 @@
-import XCTest
+import Foundation
+import Testing
 @testable import EspalierCore
 
-final class CommandTests: XCTestCase {
-    func testURLParsing() {
+struct CommandTests {
+    @Test func testURLParsing() {
         func parse(_ s: String) -> Command? { Command(url: URL(string: s)!) }
-        XCTAssertEqual(parse("espalier://arrange"), .arrange)
-        XCTAssertEqual(parse("espalier://back"), .back)
-        XCTAssertEqual(parse("espalier://zoom-out"), .zoomOut)
-        XCTAssertEqual(parse("ESPALIER://Zoom-Out"), .zoomOut)
-        XCTAssertEqual(parse("espalier://view/3"), .view(3))
-        XCTAssertEqual(parse("espalier://view?n=4"), .view(4))
-        XCTAssertEqual(parse("espalier://save-view/9"), .saveView(9))
-        XCTAssertEqual(parse("espalier://focus/left"), .focus(.left))
-        XCTAssertEqual(parse("espalier://focus?direction=up"), .focus(.top))
-        XCTAssertEqual(parse("espalier://dock/bottom"), .dock(.bottom))
-        XCTAssertNil(parse("espalier://view/10"))
-        XCTAssertNil(parse("espalier://view"))
-        XCTAssertNil(parse("espalier://nonsense"))
-        XCTAssertNil(parse("https://zoom-out"))
+        #expect(parse("espalier://arrange") == .arrange)
+        #expect(parse("espalier://back") == .back)
+        #expect(parse("espalier://zoom-out") == .zoomOut)
+        #expect(parse("ESPALIER://Zoom-Out") == .zoomOut)
+        #expect(parse("espalier://view/3") == .view(3))
+        #expect(parse("espalier://view?n=4") == .view(4))
+        #expect(parse("espalier://save-view/9") == .saveView(9))
+        #expect(parse("espalier://focus/left") == .focus(.left))
+        #expect(parse("espalier://focus?direction=up") == .focus(.top))
+        #expect(parse("espalier://dock/bottom") == .dock(.bottom))
+        #expect(parse("espalier://view/10") == nil)
+        #expect(parse("espalier://view") == nil)
+        #expect(parse("espalier://nonsense") == nil)
+        #expect(parse("https://zoom-out") == nil)
     }
 
-    func testEveryCommandRoundTripsThroughItsURLAndName() {
+    @Test func testEveryCommandRoundTripsThroughItsURLAndName() {
         for command in Command.all {
-            XCTAssertEqual(Command(url: command.url), command, command.name)
-            XCTAssertEqual(Command(name: command.name), command, command.name)
+            #expect(Command(url: command.url) == command, "\(command.name)")
+            #expect(Command(name: command.name) == command, "\(command.name)")
         }
     }
 
-    func testHotkeyParsing() {
-        XCTAssertEqual(Hotkey("ctrl+alt+up"), Hotkey(key: "up", modifiers: [.control, .option]))
-        XCTAssertEqual(Hotkey("Cmd + Shift + 3"), Hotkey(key: "3", modifiers: [.command, .shift]))
-        XCTAssertEqual(Hotkey("⌃⌥←"), Hotkey(key: "left", modifiers: [.control, .option]))
-        XCTAssertEqual(Hotkey("ctrl+alt+]"), Hotkey(key: "]", modifiers: [.control, .option]))
-        XCTAssertEqual(Hotkey("ctrl+enter"), Hotkey(key: "return", modifiers: [.control]))
-        XCTAssertEqual(Hotkey("f5"), Hotkey(key: "f5", modifiers: []))
-        XCTAssertNil(Hotkey("a"), "plain letters need a modifier")
-        XCTAssertNil(Hotkey("hyper+a"))
-        XCTAssertNil(Hotkey("ctrl+nokey"))
-        XCTAssertEqual(Hotkey("ctrl+alt+up")?.description, "⌃⌥↑")
+    @Test func testHotkeyParsing() {
+        #expect(Hotkey("ctrl+alt+up") == Hotkey(key: "up", modifiers: [.control, .option]))
+        #expect(Hotkey("Cmd + Shift + 3") == Hotkey(key: "3", modifiers: [.command, .shift]))
+        #expect(Hotkey("⌃⌥←") == Hotkey(key: "left", modifiers: [.control, .option]))
+        #expect(Hotkey("ctrl+alt+]") == Hotkey(key: "]", modifiers: [.control, .option]))
+        #expect(Hotkey("ctrl+enter") == Hotkey(key: "return", modifiers: [.control]))
+        #expect(Hotkey("f5") == Hotkey(key: "f5", modifiers: []))
+        #expect(Hotkey("a") == nil, "plain letters need a modifier")
+        #expect(Hotkey("hyper+a") == nil)
+        #expect(Hotkey("ctrl+nokey") == nil)
+        #expect(Hotkey("ctrl+alt+up")?.description == "⌃⌥↑")
     }
 
-    func testDefaultBindingsAreValidAndUnique() {
+    @Test func testDefaultBindingsAreValidAndUnique() {
         let (bindings, problems) = Config().bindings()
-        XCTAssertEqual(problems, [])
-        XCTAssertEqual(bindings.count, Config.defaultHotkeys.count)
-        XCTAssertEqual(bindings[Hotkey("ctrl+alt+up")!], .zoomOut)
-        XCTAssertEqual(bindings[Hotkey("ctrl+alt+shift+3")!], .saveView(3))
+        #expect(problems == [])
+        #expect(bindings.count == Config.defaultHotkeys.count)
+        #expect(bindings[Hotkey("ctrl+alt+up")!] == .zoomOut)
+        #expect(bindings[Hotkey("ctrl+alt+shift+3")!] == .saveView(3))
     }
 
-    func testUserBindingsOverrideAndDisable() {
+    @Test func testUserBindingsOverrideAndDisable() {
         var config = Config()
         config.hotkeys = ["zoom-out": "cmd+alt+up", "back": "", "bogus": "ctrl+x", "forward": "ctrl+alt+nope"]
         let (bindings, problems) = config.bindings()
-        XCTAssertEqual(bindings[Hotkey("cmd+alt+up")!], .zoomOut)
-        XCTAssertNil(bindings[Hotkey("ctrl+alt+up")!])
-        XCTAssertFalse(bindings.values.contains(.back))
-        XCTAssertEqual(problems.count, 2)
+        #expect(bindings[Hotkey("cmd+alt+up")!] == .zoomOut)
+        #expect(bindings[Hotkey("ctrl+alt+up")!] == nil)
+        #expect(!bindings.values.contains(.back))
+        #expect(problems.count == 2)
     }
 
-    func testConflictingBindingsAreReported() {
+    @Test func testConflictingBindingsAreReported() {
         var config = Config()
         config.hotkeys = ["zoom-in": "ctrl+alt+up"]
         let (_, problems) = config.bindings()
-        XCTAssertEqual(problems.count, 1)
+        #expect(problems.count == 1)
     }
 
-    func testConfigDecodesPartialFiles() throws {
+    @Test func testConfigDecodesPartialFiles() throws {
         let json = #"{"metrics": {"gap": 12}, "docking": false, "excludedBundleIDs": ["com.example"]}"#
         let config = try Config.decode(Data(json.utf8))
-        XCTAssertEqual(config.metrics.gap, 12)
-        XCTAssertEqual(config.metrics.margin, LayoutMetrics().margin)
-        XCTAssertFalse(config.docking)
-        XCTAssertEqual(config.excludedBundleIDs, ["com.example"])
-        XCTAssertEqual(config.animationDuration, Config().animationDuration)
+        #expect(config.metrics.gap == 12)
+        #expect(config.metrics.margin == LayoutMetrics().margin)
+        #expect(!config.docking)
+        #expect(config.excludedBundleIDs == ["com.example"])
+        #expect(config.animationDuration == Config().animationDuration)
         let roundTrip = try Config.decode(config.encoded())
-        XCTAssertEqual(roundTrip, config)
+        #expect(roundTrip == config)
     }
 
-    func testWindowMatching() {
+    @Test func testWindowMatching() {
         let saved: [WindowID: WindowInfo] = [
             10: WindowInfo(bundleID: "a", title: "One"),
             11: WindowInfo(bundleID: "a", title: "Two"),
@@ -91,22 +92,22 @@ final class CommandTests: XCTestCase {
             70: WindowInfo(bundleID: "d", title: "New"),
         ]
         let m = WindowMatcher.match(saved: saved, live: live)
-        XCTAssertEqual(m, [10: 10, 11: 50, 12: 60])
+        #expect(m == [10: 10, 11: 50, 12: 60])
     }
 
-    func testWindowMatchingDoesNotReuseAnIDForADifferentApp() {
+    @Test func testWindowMatchingDoesNotReuseAnIDForADifferentApp() {
         let m = WindowMatcher.match(saved: [5: WindowInfo(bundleID: "a", title: "x")], live: [5: WindowInfo(bundleID: "b", title: "x")])
-        XCTAssertEqual(m, [:])
+        #expect(m == [:])
     }
 
-    func testSnapshotRejectsNewerVersions() {
+    @Test func testSnapshotRejectsNewerVersions() {
         let json = #"{"version": 99, "displays": {}}"#
-        XCTAssertThrowsError(try WorkspaceSnapshot.decode(Data(json.utf8)))
+        #expect(throws: (any Error).self) { try WorkspaceSnapshot.decode(Data(json.utf8)) }
     }
 }
 
-final class PersistenceTests: XCTestCase {
-    func testHandEditedLayoutsAreNormalisedOnLoad() throws {
+struct PersistenceTests {
+    @Test func testHandEditedLayoutsAreNormalisedOnLoad() throws {
         // A split with one child, a same-axis nested split, no desktop and a duplicate window.
         let json = """
         {"version": 1, "displays": {"main": {
@@ -122,6 +123,6 @@ final class PersistenceTests: XCTestCase {
         }}}
         """
         let snapshot = try WorkspaceSnapshot.decode(Data(json.utf8))
-        XCTAssertEqual(snapshot.displays["main"]?.layout.shape, "row(1,2,D)")
+        #expect(snapshot.displays["main"]?.layout.shape == "row(1,2,D)")
     }
 }

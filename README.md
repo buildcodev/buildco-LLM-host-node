@@ -153,7 +153,8 @@ history and saved views working as the tree is edited.
 ## Development
 
 ```sh
-swift test                                                                 # layout engine tests
+swift test                                                                 # layout engine tests (Swift Testing)
+scripts/test.sh                                                            # same, and also works with only the Command Line Tools
 docker run --rm -v "$PWD":/src -w /src swift:6.1-noble swift test        # same, on Linux
 ```
 
