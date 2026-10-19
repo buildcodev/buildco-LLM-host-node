@@ -1,161 +1,146 @@
 # Espalier
 
-A fractal window manager for macOS. Nest windows inside each other as deep as you
-like, then zoom the camera to the part you need.
+Tab groups for any windows on macOS, built to sit alongside a window snapper such as
+Grid. Put Outlook and Teams in one group, snap the group to
+half the screen with Grid, and click between them like browser tabs.
 
-Espalier is an independent, open reimplementation of the ideas in
-[TrellisWM](https://trelliswm.app/). It's not affiliated with TrellisWM and shares
-no code with it. [docs/RESEARCH.md](docs/RESEARCH.md) lists what's known about the
-original (with sources), what was inferred, and what's still unknown.
+Espalier doesn't lay windows out. Grid (or you) decides where a window goes; Espalier
+keeps the group together wherever its shown window ends up.
+
+This branch (`espalier-tabs`) is a cut-down rework of Espalier the fractal window
+manager, which is on the `espalier-window-manager` branch.
 
 ## How it works
 
-- **Desktop:** every display starts as one desktop, where windows float as they
-  normally would.
-- **Docking:** drag a window onto an edge and it docks there, splitting the space.
-  The edge can belong to another window, a group, the desktop, or the screen.
-  Dock beside a window that's already docked and you get a nested layout, to any
-  depth.
-- **Tabs:** drop a window on another docked window's title bar and they share one
-  slot as tabs. A tab strip appears above them, and clicking a tab switches to it.
-- **Resizing:** drag the gap between two docked windows to resize both. Resizing a
-  docked window by its own border moves the neighbouring gaps to follow it.
-- **Zooming:** the camera can frame the whole layout, one window, or any group or
-  run of neighbours in between. Everything outside the frame is moved off screen,
-  and it all keeps running.
-- **Tiles:** a window too small to use at the current zoom is drawn as its app's
-  colour and icon. A nested group that's too small even for icons becomes one tile
-  lined with its splits. Double-click any tile to zoom to it.
-- **Revealing:** focusing a window that's off camera (Cmd-Tab, a Dock click, a new
-  window) widens the camera until the window is visible and big enough to use.
-- **Minimizing:** minimized and hidden windows keep their slot and come back to it.
-- **Saved views:** each display has nine. Layouts are saved per display and restored
-  after Espalier restarts.
-- **Commands:** every command is available as a URL, so Raycast, Alfred, Shortcuts,
-  a Stream Deck or a shell script can drive Espalier.
-
-Zoom transitions are animated. If you grant Screen Recording, moving windows show
-their real contents; without it they're drawn as their app's colour and icon.
+- **Making tabs:** drag a window by its title bar onto another window's title bar (or
+  onto a tab strip) and hold it there for a moment. A blue outline appears; let go and
+  they share a strip of tabs above the window. A quick drag across a title bar doesn't
+  make tabs.
+- **Switching:** click a tab. Only the chosen tab is shown; the others wait just off
+  the screen's corner and take the same place when chosen. Cmd-Tab or a Dock click on
+  a waiting tab switches to it too.
+- **Moving a group:** whatever moves the shown window moves the group. Snap it with
+  Grid (F5 / F6, ⌃⌥ arrows, maximize) and the strip follows; dragging the window by
+  its title bar moves the group too. When the strip wouldn't fit above (Grid's halves
+  start at the top of the screen), the window gives up the top 30 points so the strip
+  and window together fill the half.
+- **Rearranging:** drag a tab along the strip to reorder it. Drag it off the strip to
+  take it out of the group, or onto another window's title bar to move it there.
+- **Wide apps:** some apps won't get narrower than half the screen (Outlook needs
+  1368 points of a 2624-point display). When two windows or groups are snapped side
+  by side and one of them needs more than half, the line between them moves to give
+  it the room and the other side narrows. When both need more than they can share,
+  the width is split in proportion to what each needs. Espalier learns each app's
+  minimum the first time it refuses to shrink, and remembers it. Switching a group
+  to a narrower tab moves the line back.
+- **Closing and minimizing:** close or minimize the shown tab and the next one takes
+  its place. A minimized tab comes back as the shown tab.
+- **Restarts:** groups are saved and found again after Espalier or the apps restart.
+  Quitting Espalier puts every waiting tab back on screen.
 
 ## Install
 
-Requires macOS 14 Sonoma or later. Build it with Swift 5.9+ (Xcode 15 or later):
+Requires macOS 14 Sonoma or later. Build it with Swift 5.9+ (Xcode 15 or later, or
+just the Command Line Tools):
 
 ```sh
-scripts/bundle.sh            # builds dist/Espalier.app (add --universal for Intel + Apple silicon)
+scripts/bundle.sh            # builds dist/Espalier.app
 cp -R dist/Espalier.app /Applications/
 open /Applications/Espalier.app
 ```
 
-When it starts, Espalier asks for **Accessibility** permission in System Settings →
-Privacy & Security. This permission is required, since it's how one app moves
-another app's windows. **Screen Recording** is optional and can be turned on from
-the menu bar icon.
+Espalier asks for **Accessibility** permission in System Settings → Privacy &
+Security. It's required: it's how one app moves another app's windows.
 
-The app is signed ad hoc, so macOS treats each rebuild as a new app. After
-rebuilding you may need to switch Accessibility off and on again for Espalier.
-Set `CODESIGN_IDENTITY` to a Developer ID identity to avoid this.
+The app is signed ad hoc, so macOS treats each rebuild as a new app. After rebuilding
+you may need to switch Accessibility off and on again for Espalier. Set
+`CODESIGN_IDENTITY` to a Developer ID identity to avoid this.
 
-## Using it
+Don't run it alongside another tool that hides windows in tabs or lays them out
+(TrellisWM, for example): the menu bar item warns when TrellisWM is running.
+
+## Using it with Grid
+
+Grid's F5 / F6 (left and right half) work on the focused window, which in a group is
+the shown tab, so they move the whole group. On a Mac keyboard F5 and F6 are media
+keys unless "Use F1, F2, etc. keys as standard function keys" is on (System Settings
+→ Keyboard), so press them with fn.
+
+Espalier's own shortcuts stay clear of Grid's ⌃⌥ letters and arrows.
 
 | To | Do this |
 |---|---|
-| Dock a window | Drag it onto the edge of another window, the desktop, or the screen. A blue preview shows where it will go. |
-| Make tabs | Drag it onto the title bar of a docked window. |
-| Keep a window floating | Hold Shift when you let go. |
-| Float a docked window | Drag it onto the desktop, or press ⌃⌥F (which also docks a floating window beside the desktop). |
-| Resize | Drag the gap between two windows. |
-| Zoom in / out a level | ⌃⌥↓ / ⌃⌥↑, or pinch over bare desktop, or hold ⌥ and pinch anywhere. |
-| Fill the screen with a window | ⌃⌥↩. Press it again to go back. |
-| Zoom to a tile | Double-click it. |
-| See everything | ⌃⌥O. Press it again to go back. |
-| Back / forward | ⌃⌥← / ⌃⌥→ |
-| Saved views | ⌃⌥1 – ⌃⌥9 to go to a view, ⌃⌥⇧1 – ⌃⌥⇧9 to save one. |
-| Dock every floating window | ⌃⌥A |
-| Move focus | ⌃⌥⌘ + arrow |
-| Switch tabs | ⌃⌥] / ⌃⌥[ |
+| Make tabs | Drag a window onto another's title bar or strip, hold, let go |
+| Switch tab | Click it, or ⌃⌥] / ⌃⌥[ for the next / previous tab |
+| Reorder | Drag a tab along the strip |
+| Take a tab out | Drag it off the strip, or choose Take Window Out of Its Group |
 
 ### URL commands
 
-Each command is `espalier://<name>`:
-
 ```sh
-open espalier://arrange       # dock every floating window
-open espalier://relayout      # put every window back in its slot
-open espalier://back          # previous camera position (also: forward)
-open espalier://zoom-out      # one level out (also: zoom-in, overview, maximize)
-open espalier://view/3        # go to saved view 3 (save-view/3 saves it)
-open espalier://focus/left    # move focus (left, right, top/up, bottom/down)
-open espalier://dock/right    # dock the focused window against the right edge of the screen
-open espalier://toggle-float  # dock or float the focused window
-open espalier://next-tab      # also: previous-tab
+open espalier://next-tab       # also: previous-tab
+open espalier://tab/2          # show the focused group's second tab
+open espalier://ungroup        # take the focused window out of its group
+open espalier://ungroup-all
 ```
 
 ### Settings
 
 `~/Library/Application Support/Espalier/config.json` is created on first launch.
-You can open it from the menu bar icon, and any key can be left out. Choose
-**Reload Settings** after editing it.
+Any key can be left out. Choose **Reload Settings** from the menu bar item after
+editing it.
 
 ```json
 {
-  "metrics": { "gap": 8, "margin": 8, "usableSize": { "width": 240, "height": 150 } },
-  "hotkeys": { "zoom-out": "cmd+alt+up", "back": "" },
-  "docking": true,
-  "keepFloatingModifier": "shift",
-  "pinchModifier": "alt",
-  "animationDuration": 0.28,
+  "hotkeys": { "next-tab": "ctrl+alt+]", "tab/1": "ctrl+alt+1", "previous-tab": "" },
+  "stripHeight": 30,
+  "maxTabWidth": 280,
+  "holdDelay": 0.35,
+  "widenSides": true,
   "excludedBundleIDs": ["com.apple.systempreferences"]
 }
 ```
 
-`hotkeys` maps command names to shortcuts and overrides the defaults above. An
-empty string turns a shortcut off. Layouts are saved next to the settings in
-`state.json`.
+If `config.json` was written by the window-manager version of Espalier, it's moved
+to `config.window-manager.json` and a fresh one is written. Groups are saved in
+`tabs.json`, along with the minimum width learned for each app.
 
 ## Design
 
 ```
-Sources/EspalierCore   platform-independent layout engine (pure Swift, unit-tested on Linux and macOS)
-  Layout.swift         the tree: splits, tab groups and the desktop; docking, tabs, removal, normalisation
-  Camera.swift         world/screen mapping, framings, zooming levels, history and saved views
-  Presentation.swift   what the screen shows for a camera: window frames, parked windows, tiles, tab strips, gaps
-  DisplayState.swift   one display's state, drop targets, resizing, arrange, reveal
+Sources/EspalierCore   platform-independent model (pure Swift, unit-tested on Linux and macOS)
+  Tabs.swift           tab groups: adding, removing, showing, reordering, restoring after a restart
+  Placement.swift      where a strip and its tabs go; side-by-side detection and the line between halves
   Commands.swift       URL commands and shortcut parsing
-Sources/Espalier       the macOS app (AppKit, Accessibility, Carbon hot keys, ScreenCaptureKit)
-  WindowManager.swift  applies presentations to real windows and routes input
+Sources/Espalier       the macOS app (AppKit, Accessibility, Carbon hot keys)
+  TabManager.swift     keeps groups together, follows Grid, drag-to-tab, widening sides
+  StripWindow.swift    the tab strip panel and the drop outline
   WindowTracker.swift  per-app AXObservers plus a periodic reconcile
-  EventTap.swift       mouse and pinch input
-  Overlay.swift        icon tiles and tab strips (below windows); zoom animation and drop preview (above them)
+  EventTap.swift       watches mouse drags (never blocks on another app)
 ```
 
-The layout is a tree in a unit square. Splits are weighted rows or columns, the
-leaves are tab groups, and one leaf is the desktop. The camera is a rect in that
-square that gets mapped onto the screen. Framing a node makes it fill the display.
-Windows can't be scaled, so any window outside the camera, or smaller than it can
-usefully be, is *parked*: moved off screen with a one-pixel sliver left, the way
-other macOS tiling managers hide windows. An overlay tile is drawn in its place.
-
-The camera remembers *which windows* it framed rather than which node. That keeps
-history and saved views working as the tree is edited.
+A strip is a non-activating panel ordered directly above its group's shown window, so
+windows in front of the group cover the strip too, and clicking a tab never takes
+focus from your apps. Waiting tabs are moved off screen with a one-point sliver left,
+the way macOS tiling tools hide windows.
 
 ## Limitations
 
-- Full-screen windows, sheets, dialogs and other Spaces are left to macOS. Windows
-  on another Space give up their room while you're away and get it back when you
-  return.
-- Parked windows can still be reached with Cmd-Tab or the Dock. Focusing one
-  zooms the camera to it.
-- Pinch zooming steps one level at a time instead of zooming continuously.
-- When a display is disconnected, its windows float on the displays they move to.
-  Its layout comes back when the display does.
+- Snapped halves are recognised by their shape: nearly full height, roughly half the
+  width, against the left edge or from the middle to the right edge. Quarters and
+  thirds don't widen.
+- When a group is snapped to the bottom half, its strip sits above the window and
+  overlaps the top half by its height.
+- Windows on other Spaces aren't seen until you visit that Space, so a group whose
+  windows are on another Space when Espalier starts loses them.
+- Full-screen windows are left to macOS.
 
 ## Development
 
 ```sh
-swift test                                                                 # layout engine tests (Swift Testing)
+swift test                                                                 # model tests (Swift Testing)
 scripts/test.sh                                                            # same, and also works with only the Command Line Tools
 docker run --rm -v "$PWD":/src -w /src swift:6.1-noble swift test        # same, on Linux
 ```
 
-CI runs the engine's tests on Linux, and builds, tests and bundles the app on macOS.
+CI runs the model's tests on Linux, and builds, tests and bundles the app on macOS.
