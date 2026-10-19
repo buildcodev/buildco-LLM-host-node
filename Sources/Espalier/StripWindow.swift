@@ -30,17 +30,11 @@ final class StripPanel: NSPanel {
         becomesKeyOnlyIfNeeded = true
         collectionBehavior = [.ignoresCycle, .fullScreenNone]
 
-        let host = NSView()
-        let glass = StripPanel.makeGlass(content: stripView)
-        glass.frame = host.bounds.insetBy(dx: StripPanel.glassInset.width, dy: StripPanel.glassInset.height)
-        glass.autoresizingMask = [.width, .height]
-        host.addSubview(glass)
-        contentView = host
+        contentView = StripHostView(glass: StripPanel.makeGlass(content: stripView))
     }
 
     /// The glass behind the tabs, with `content` drawn in it.
     private static func makeGlass(content: NSView) -> NSView {
-        content.autoresizingMask = [.width, .height]
         if #available(macOS 26.0, *) {
             let glass = CapsuleGlassView()
             glass.style = .regular
@@ -65,6 +59,7 @@ final class StripPanel: NSPanel {
         let frame = Displays.cocoaRect(rect)
         if self.frame.size != frame.size {
             setFrame(frame, display: true)
+            logger.debug("Strip is \(frame.width, privacy: .public)×\(frame.height, privacy: .public); tabs drawn in \(self.stripView.frame.width, privacy: .public)×\(self.stripView.frame.height, privacy: .public)")
         } else if self.frame.origin != frame.origin {
             setFrameOrigin(frame.origin)
         }
@@ -75,23 +70,47 @@ final class StripPanel: NSPanel {
     }
 }
 
-/// Liquid Glass shaped as a capsule, whatever its height.
+/// The panel's content: the glass capsule, inset from the panel's edges. Sizes are set
+/// directly whenever the panel resizes; resizing masks can't recover from the empty frame
+/// a view starts with (insetting it gives a null rect), which left the tabs undrawn.
+private final class StripHostView: NSView {
+    let glass: NSView
+
+    init(glass: NSView) {
+        self.glass = glass
+        super.init(frame: .zero)
+        addSubview(glass)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        let inset = StripPanel.glassInset
+        glass.frame = NSRect(x: inset.width, y: inset.height,
+                             width: max(0, newSize.width - 2 * inset.width), height: max(0, newSize.height - 2 * inset.height))
+    }
+}
+
+/// Liquid Glass shaped as a capsule, whatever its height, with the tabs filling it.
 @available(macOS 26.0, *)
 private final class CapsuleGlassView: NSGlassEffectView {
-    override func layout() {
-        super.layout()
-        cornerRadius = bounds.height / 2
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        cornerRadius = newSize.height / 2
+        contentView?.frame = NSRect(origin: .zero, size: newSize)
     }
 }
 
 /// The pre-macOS 26 stand-in: a translucent blur shaped as a capsule.
 private final class CapsuleBlurView: NSVisualEffectView {
-    override func layout() {
-        super.layout()
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
         wantsLayer = true
-        layer?.cornerRadius = bounds.height / 2
+        layer?.cornerRadius = newSize.height / 2
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
+        for view in subviews { view.frame = NSRect(origin: .zero, size: newSize) }
     }
 }
 
