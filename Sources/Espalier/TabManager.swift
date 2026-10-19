@@ -412,9 +412,11 @@ final class TabManager: NSObject {
             return
         }
         hover = Hover(target: target, since: CACurrentMediaTime())
+        logger.debug("Dragging \(session.window) over \(target)'s title bar")
         // Arm after hovering a moment, even if the mouse stops moving.
         DispatchQueue.main.asyncAfter(deadline: .now() + config.holdDelay) { [weak self] in
             guard let self, self.drag != nil, self.hover?.target == target else { return }
+            logger.debug("Letting go of \(session.window) now makes it a tab with \(target)")
             self.hover?.armed = true
             self.highlight.show(self.highlightRect(for: target))
         }
@@ -705,8 +707,9 @@ extension TabManager: EventTapHandler {
         // A click may have raised a group's window above its strip.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.syncStrips() }
         // The window server's bounds avoid a blocking AX call inside the tap. A press on a
-        // strip belongs to the strip.
-        if let top = WindowList.frontmost(at: cgPoint, excludingPID: 0), top.pid != getpid(), top.layer == 0, tracker.windows[top.id] != nil {
+        // strip belongs to the strip. A press on something above windows (a menu, the Dock)
+        // starts a session for the window below that never moves, which does nothing.
+        if let top = WindowList.frontmostOrdinary(at: cgPoint), top.pid != getpid(), tracker.windows[top.id] != nil {
             drag = DragSession(window: top.id, startFrame: Rect(top.bounds))
         }
         return false

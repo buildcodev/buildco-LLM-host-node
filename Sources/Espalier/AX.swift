@@ -151,5 +151,12 @@ enum WindowList {
     static func frontmost(at point: CGPoint, excludingPID: pid_t) -> Entry? {
         onScreen().first { $0.pid != excludingPID && $0.layer >= 0 && $0.layer < 1000 && $0.bounds.contains(point) }
     }
+
+    /// The frontmost ordinary window (layer 0) at a point. Overlays above ordinary windows
+    /// are skipped: the Dock and some tools (Grid, for one) keep transparent windows over the
+    /// whole display, so the frontmost window of any layer is rarely the one being clicked.
+    static func frontmostOrdinary(at point: CGPoint) -> Entry? {
+        onScreen().first { $0.layer == 0 && $0.bounds.contains(point) }
+    }
 }
 #endif
