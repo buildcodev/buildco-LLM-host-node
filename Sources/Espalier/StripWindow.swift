@@ -42,10 +42,16 @@ final class StripPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// Shows the strip at `rect` (global, top-left coordinates), directly above `window`.
-    func show(at rect: Rect, above window: WindowID) {
+    /// While following a moving window, `restack` is off: the strip only moves, which keeps
+    /// it from flickering.
+    func show(at rect: Rect, above window: WindowID, restack: Bool = true) {
         let frame = Displays.cocoaRect(rect)
-        if self.frame != frame { setFrame(frame, display: true) }
-        stripView.frame = contentView?.bounds ?? .zero
+        if self.frame.size != frame.size {
+            setFrame(frame, display: true)
+        } else if self.frame.origin != frame.origin {
+            setFrameOrigin(frame.origin)
+        }
+        guard restack || !isVisible else { return }
         // A strip left on another Space is ordered out first so it joins this one.
         if isVisible, !isOnActiveSpace { orderOut(nil) }
         order(.above, relativeTo: Int(window))

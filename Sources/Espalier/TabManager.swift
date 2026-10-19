@@ -7,6 +7,8 @@ private struct DragSession {
     let window: WindowID
     let startFrame: Rect
     var moving = false
+    /// The window is a group's shown tab, so its strip follows it.
+    var followsStrip = false
     var lastCheck: CFTimeInterval = 0
 }
 
@@ -173,6 +175,7 @@ final class TabManager: NSObject {
         setFrame(window, g.frame)
         if let previous, previous != window, !minimized.contains(previous) { park(previous) }
         if focus { self.focus(window) } else { tracker.windows[window]?.element.raise() }
+        verifyPlacement(of: window)
         logger.debug("Showing tab \(window) (hid \(previous ?? 0))")
         rebalance(containing: window)
         syncStrips()
@@ -265,7 +268,25 @@ final class TabManager: NSObject {
     /// Moves one group's strip to follow its shown window, without redrawing the others.
     private func followStrip(of id: WindowID, frame: Rect) {
         guard let panel = strips[id], tabs.group(containing: id)?.active == id else { return }
-        panel.show(at: TabStripLayout.strip(above: frame, height: config.stripHeight), above: id)
+        panel.show(at: TabStripLayout.strip(above: frame, height: config.stripHeight), above: id, restack: false)
+    }
+
+    /// Apps sometimes put a window back where they had it just after we move it (Teams
+    /// finishing its own title-bar drag, for one). Checks a moment later and, if the shown
+    /// tab has wandered from its group's place, puts it back once. A window that's only
+    /// wider (an app's minimum) has stayed put.
+    private func verifyPlacement(of id: WindowID) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.drag == nil, NSEvent.pressedMouseButtons & 1 == 0,
+                  let g = self.tabs.group(containing: id), g.active == id, !self.minimized.contains(id),
+                  let frame = self.tracker.windows[id]?.frame
+            else { return }
+            let wandered = abs(frame.x - g.frame.x) > 2 || abs(frame.y - g.frame.y) > 2
+                || abs(frame.height - g.frame.height) > 2 || frame.width < g.frame.width - 2
+            guard wandered else { return }
+            logger.info("Tab \(id) moved off its place to \(frame, privacy: .public); putting it back")
+            if let actual = self.setFrame(id, g.frame) { self.followStrip(of: id, frame: actual) }
+        }
     }
 
     private func makeStrip() -> StripPanel {
@@ -341,6 +362,7 @@ final class TabManager: NSObject {
         setFrame(window, frame)
         if let hidden, !minimized.contains(hidden) { park(hidden) }
         focus(window)
+        verifyPlacement(of: window)
         rebalance(containing: window)
         syncStrips()
         scheduleSave()
@@ -710,20 +732,26 @@ extension TabManager: EventTapHandler {
         // strip belongs to the strip. A press on something above windows (a menu, the Dock)
         // starts a session for the window below that never moves, which does nothing.
         if let top = WindowList.frontmostOrdinary(at: cgPoint), top.pid != getpid(), tracker.windows[top.id] != nil {
-            drag = DragSession(window: top.id, startFrame: Rect(top.bounds))
+            drag = DragSession(window: top.id, startFrame: Rect(top.bounds), followsStrip: tabs.group(containing: top.id)?.active == top.id)
         }
         return false
     }
 
     func mouseDragged(to cgPoint: CGPoint, flags: CGEventFlags) -> Bool {
         let now = CACurrentMediaTime()
-        guard var session = drag, now - session.lastCheck > 0.03 else { return false }
+        guard var session = drag, now - session.lastCheck > 0.016 else { return false }
         session.lastCheck = now
-        if !session.moving, let frame = WindowList.bounds(of: session.window).map(Rect.init),
-           FrameChange(from: session.startFrame, to: frame) == .moved {
+        let bounds = WindowList.bounds(of: session.window).map(Rect.init)
+        if !session.moving, let frame = bounds, FrameChange(from: session.startFrame, to: frame) == .moved {
             session.moving = true
         }
         drag = session
+        // The window server's position is ahead of the app's move notifications: follow it
+        // for a strip that keeps up with the window.
+        if session.followsStrip, let frame = bounds {
+            let id = session.window
+            DispatchQueue.main.async { self.followStrip(of: id, frame: frame) }
+        }
         if session.moving {
             let point = Point(cgPoint)
             DispatchQueue.main.async { self.updateHover(session, at: point) }
