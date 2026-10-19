@@ -6,18 +6,21 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-arch_flags=()
+binary=$(mktemp -d)/Espalier
 if [[ "${1:-}" == "--universal" ]]; then
-  arch_flags=(--arch arm64 --arch x86_64)
+  # Building several architectures at once needs Xcode's build system, so build each
+  # one (which the Command Line Tools can) and merge them.
+  for arch in arm64 x86_64; do swift build -c release --triple "$arch-apple-macosx14.0"; done
+  lipo -create .build/arm64-apple-macosx/release/Espalier .build/x86_64-apple-macosx/release/Espalier -output "$binary"
+else
+  swift build -c release
+  cp "$(swift build -c release --show-bin-path)/Espalier" "$binary"
 fi
-
-swift build -c release ${arch_flags[@]+"${arch_flags[@]}"}
-bin_dir=$(swift build -c release ${arch_flags[@]+"${arch_flags[@]}"} --show-bin-path)
 
 app=dist/Espalier.app
 rm -rf "$app" dist/Espalier.zip
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$bin_dir/Espalier" "$app/Contents/MacOS/Espalier"
+cp "$binary" "$app/Contents/MacOS/Espalier"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
   codesign --force --sign "$CODESIGN_IDENTITY" "$app"
