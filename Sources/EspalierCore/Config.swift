@@ -7,7 +7,7 @@ public struct Config: Codable, Equatable, Sendable {
     /// over the defaults; an empty string turns a default shortcut off.
     public var hotkeys: [String: String] = [:]
     /// Height of the tab strip above a group's window, in points.
-    public var stripHeight: Double = 30
+    public var stripHeight: Double = 36
     /// The widest a single tab gets.
     public var maxTabWidth: Double = 280
     /// How long, in seconds, a dragged window has to hover over another window's title bar

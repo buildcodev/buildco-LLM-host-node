@@ -183,7 +183,9 @@ final class TabManager: NSObject {
             one.remap(mapping)
             guard let g = one.groups.first else { continue }
             tabs.adopt(g)
-            guard let adopted = tabs.group(containing: g.active) else { continue }
+            guard tabs.group(containing: g.active) != nil else { continue }
+            tabs.setFrame(roomForStrip(tabs.group(containing: g.active)!.frame), ofGroupContaining: g.active)
+            let adopted = tabs.group(containing: g.active)!
             logger.info("Restored a group of \(adopted.windows.count) tabs")
             for id in adopted.windows { windowInfo[id] = tracker.windows[id]?.info }
             if !minimized.contains(adopted.active) { setFrame(adopted.active, adopted.frame) }
@@ -199,7 +201,12 @@ final class TabManager: NSObject {
 
     /// Shows `window`'s tab in its group's place and hides the tab that was shown.
     private func show(_ window: WindowID, focus: Bool) {
-        guard let g = tabs.group(containing: window) else { return }
+        guard var g = tabs.group(containing: window) else { return }
+        let room = roomForStrip(g.frame)
+        if room != g.frame {
+            tabs.setFrame(room, ofGroupContaining: window)
+            g.frame = room
+        }
         let previous = tabs.activate(window)
         showingUntil = CACurrentMediaTime() + 0.5
         minimized.remove(window)
@@ -376,6 +383,15 @@ final class TabManager: NSObject {
         if let g = tabs.group(containing: target) { return g.frame }
         guard let frame = tracker.windows[target]?.frame else { return nil }
         return fitted(frame)
+    }
+
+    /// A group's frame moved down just enough for its strip to fit below the top of the
+    /// screen, keeping its bottom edge. Needed when the strip got taller in the settings.
+    private func roomForStrip(_ frame: Rect) -> Rect {
+        guard let display = displays.best(for: frame) else { return frame }
+        let overflow = display.visibleFrame.minY - (frame.minY - config.stripHeight)
+        guard overflow > 0.5 else { return frame }
+        return Rect(x: frame.x, y: frame.y + overflow, width: frame.width, height: max(100, frame.height - overflow))
     }
 
     private func fitted(_ frame: Rect) -> Rect {

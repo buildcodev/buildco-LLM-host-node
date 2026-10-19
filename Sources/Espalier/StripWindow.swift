@@ -11,11 +11,15 @@ struct WindowLook {
 
 /// A tab strip: a borderless panel that sits directly above a group's shown window.
 /// It never becomes key or activates Espalier, so clicking a tab leaves focus with the app.
+/// The strip is a floating capsule of the system's glass (Liquid Glass on macOS 26, a
+/// translucent blur before that), inset a little from the panel's edges.
 final class StripPanel: NSPanel {
     let stripView = StripView()
+    /// Space between the panel's edges and the glass capsule.
+    static let glassInset = NSSize(width: 2, height: 3)
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 100, height: 30), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 100, height: 36), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
@@ -25,17 +29,30 @@ final class StripPanel: NSPanel {
         isMovable = false
         becomesKeyOnlyIfNeeded = true
         collectionBehavior = [.ignoresCycle, .fullScreenNone]
-        let effect = NSVisualEffectView()
-        effect.material = .titlebar
+
+        let host = NSView()
+        let glass = StripPanel.makeGlass(content: stripView)
+        glass.frame = host.bounds.insetBy(dx: StripPanel.glassInset.width, dy: StripPanel.glassInset.height)
+        glass.autoresizingMask = [.width, .height]
+        host.addSubview(glass)
+        contentView = host
+    }
+
+    /// The glass behind the tabs, with `content` drawn in it.
+    private static func makeGlass(content: NSView) -> NSView {
+        content.autoresizingMask = [.width, .height]
+        if #available(macOS 26.0, *) {
+            let glass = CapsuleGlassView()
+            glass.style = .regular
+            glass.contentView = content
+            return glass
+        }
+        let effect = CapsuleBlurView()
+        effect.material = .hudWindow
         effect.blendingMode = .behindWindow
         effect.state = .active
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = 9
-        effect.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        effect.layer?.masksToBounds = true
-        stripView.autoresizingMask = [.width, .height]
-        effect.addSubview(stripView)
-        contentView = effect
+        effect.addSubview(content)
+        return effect
     }
 
     override var canBecomeKey: Bool { false }
@@ -58,6 +75,26 @@ final class StripPanel: NSPanel {
     }
 }
 
+/// Liquid Glass shaped as a capsule, whatever its height.
+@available(macOS 26.0, *)
+private final class CapsuleGlassView: NSGlassEffectView {
+    override func layout() {
+        super.layout()
+        cornerRadius = bounds.height / 2
+    }
+}
+
+/// The pre-macOS 26 stand-in: a translucent blur shaped as a capsule.
+private final class CapsuleBlurView: NSVisualEffectView {
+    override func layout() {
+        super.layout()
+        wantsLayer = true
+        layer?.cornerRadius = bounds.height / 2
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = true
+    }
+}
+
 /// Draws the tabs and turns clicks and drags into tab actions.
 final class StripView: NSView {
     var tabs: [WindowID] = []
@@ -73,54 +110,115 @@ final class StripView: NSView {
     private var pressed: (tab: WindowID, at: NSPoint)?
     private var dragging = false
     private var insertion: Int?
+    private var hovered: WindowID?
+
+    /// Room between the capsule's ends and the first and last tab.
+    private static let endPadding: CGFloat = 4
+    private static let titleFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+    private static let activeTitleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var bounds2: Rect { Rect(x: 0, y: 0, width: Double(bounds.width), height: Double(bounds.height)) }
+    private var tabArea: Rect {
+        let inset = Double(StripView.endPadding)
+        return Rect(x: inset, y: 0, width: max(0, Double(bounds.width) - 2 * inset), height: Double(bounds.height))
+    }
 
     private func tabRects() -> [CGRect] {
-        TabStripLayout.tabRects(in: bounds2, count: tabs.count, maxWidth: maxTabWidth).map(\.cgRect)
+        TabStripLayout.tabRects(in: tabArea, count: tabs.count, maxWidth: maxTabWidth).map(\.cgRect)
+    }
+
+    private var isDark: Bool {
+        effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        for (tab, r) in zip(tabs, tabRects()) {
-            let rect = r.insetBy(dx: 3, dy: 3)
+        let rects = tabRects()
+        let activeIndex = tabs.firstIndex { $0 == active }
+        for (i, (tab, r)) in zip(tabs, rects).enumerated() {
+            let chip = r.insetBy(dx: 2, dy: 3)
             let look = look(tab)
             let isActive = tab == active
             if isActive {
-                let chip = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
-                (look?.color ?? .controlAccentColor).withAlphaComponent(0.45).setFill()
-                chip.fill()
-                NSColor.white.withAlphaComponent(0.25).setStroke()
-                chip.lineWidth = 1
-                chip.stroke()
-            } else if r.maxX < bounds.width - 1 {
-                NSColor.labelColor.withAlphaComponent(0.15).setFill()
-                NSRect(x: r.maxX - 0.5, y: r.minY + 8, width: 1, height: r.height - 16).fill()
+                drawSelectedChip(chip, tint: look?.color)
+            } else if tab == hovered, !dragging {
+                let hover = NSBezierPath(roundedRect: chip, xRadius: chip.height / 2, yRadius: chip.height / 2)
+                NSColor.labelColor.withAlphaComponent(isDark ? 0.10 : 0.07).setFill()
+                hover.fill()
             }
-            var textX = rect.minX + 8
-            if let icon = look?.icon {
-                let side = min(16, rect.height - 6)
-                icon.draw(in: CGRect(x: rect.minX + 7, y: rect.midY - side / 2, width: side, height: side),
-                          from: .zero, operation: .sourceOver, fraction: isActive ? 1 : 0.8, respectFlipped: true, hints: nil)
-                textX += side + 4
+            // A hairline between two tabs that aren't selected.
+            if i + 1 < rects.count, !isActive, activeIndex != i + 1 {
+                NSColor.labelColor.withAlphaComponent(0.16).setFill()
+                NSRect(x: r.maxX - 0.5, y: r.minY + 10, width: 1, height: r.height - 20).fill()
             }
-            let style = NSMutableParagraphStyle()
-            style.lineBreakMode = .byTruncatingTail
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 12, weight: isActive ? .semibold : .regular),
-                .foregroundColor: isActive ? NSColor.labelColor : NSColor.secondaryLabelColor,
-                .paragraphStyle: style,
-            ]
-            ((look?.title ?? "") as NSString).draw(in: CGRect(x: textX, y: rect.midY - 8, width: max(0, rect.maxX - textX - 6), height: 17), withAttributes: attributes)
+            drawLabel(look, in: chip, active: isActive)
         }
         if let insertion, dragging {
-            let rects = tabRects()
             let x = insertion < rects.count ? rects[insertion].minX : (rects.last?.maxX ?? 0)
+            let marker = NSBezierPath(roundedRect: NSRect(x: x - 1.5, y: 6, width: 3, height: bounds.height - 12), xRadius: 1.5, yRadius: 1.5)
             NSColor.controlAccentColor.setFill()
-            NSRect(x: x - 1, y: 4, width: 2, height: bounds.height - 8).fill()
+            marker.fill()
         }
+    }
+
+    /// The selected tab: a raised capsule, lightly tinted with its app's colour, with a fine
+    /// highlight along its edge like the system's own glass controls.
+    private func drawSelectedChip(_ chip: CGRect, tint: NSColor?) {
+        let path = NSBezierPath(roundedRect: chip, xRadius: chip.height / 2, yRadius: chip.height / 2)
+        NSColor.white.withAlphaComponent(isDark ? 0.16 : 0.62).setFill()
+        path.fill()
+        if let tint {
+            tint.withAlphaComponent(isDark ? 0.22 : 0.16).setFill()
+            path.fill()
+        }
+        NSColor.white.withAlphaComponent(isDark ? 0.28 : 0.75).setStroke()
+        path.lineWidth = 0.75
+        path.stroke()
+    }
+
+    private func drawLabel(_ look: WindowLook?, in chip: CGRect, active: Bool) {
+        var textX = chip.minX + 10
+        if let icon = look?.icon {
+            let side = min(18, chip.height - 6)
+            icon.draw(in: CGRect(x: chip.minX + 9, y: chip.midY - side / 2, width: side, height: side),
+                      from: .zero, operation: .sourceOver, fraction: active ? 1 : 0.85, respectFlipped: true, hints: nil)
+            textX = chip.minX + 9 + side + 6
+        }
+        let font = active ? StripView.activeTitleFont : StripView.titleFont
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: active ? NSColor.labelColor : NSColor.labelColor.withAlphaComponent(0.72),
+            .paragraphStyle: style,
+        ]
+        // Centred on the font's own height, so the text has even room above and below.
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        let rect = CGRect(x: textX, y: chip.midY - lineHeight / 2, width: max(0, chip.maxX - textX - 10), height: lineHeight)
+        ((look?.title ?? "") as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attributes)
+    }
+
+    // MARK: Mouse
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let tab = tabRects().firstIndex { $0.contains(p) }.map { tabs[$0] }
+        if tab != hovered {
+            hovered = tab
+            needsDisplay = true
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = nil
+        needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -135,7 +233,7 @@ final class StripView: NSView {
         let p = convert(event.locationInWindow, from: nil)
         if !dragging, hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 6 { dragging = true }
         guard dragging else { return }
-        insertion = isNearStrip(p) ? TabStripLayout.insertionIndex(at: Double(p.x), in: bounds2, count: tabs.count, maxWidth: maxTabWidth) : nil
+        insertion = isNearStrip(p) ? TabStripLayout.insertionIndex(at: Double(p.x), in: tabArea, count: tabs.count, maxWidth: maxTabWidth) : nil
         NSCursor.closedHand.set()
         needsDisplay = true
     }
@@ -153,7 +251,7 @@ final class StripView: NSView {
         if !dragging {
             onSelect?(pressed.tab)
         } else if isNearStrip(p) {
-            var index = TabStripLayout.insertionIndex(at: Double(p.x), in: bounds2, count: tabs.count, maxWidth: maxTabWidth)
+            var index = TabStripLayout.insertionIndex(at: Double(p.x), in: tabArea, count: tabs.count, maxWidth: maxTabWidth)
             if let from = tabs.firstIndex(of: pressed.tab), from < index { index -= 1 }
             onReorder?(pressed.tab, index)
         } else {

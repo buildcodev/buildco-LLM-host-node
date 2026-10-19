@@ -16,13 +16,14 @@ manager, which is on the `espalier-window-manager` branch.
   title bar or just below, or its tab strip) and hold it there for a moment. An outline
   in your accent colour shows the area; let go inside it and they share a strip of tabs
   above the window. A quick drag across another window doesn't make tabs.
-- **Switching:** click a tab. Only the chosen tab is shown; the others wait just off
+- **Switching:** click a tab (the selected one is a raised capsule tinted with its app's
+  colour). Only the chosen tab is shown; the others wait just off
   the screen's corner and take the same place when chosen. Cmd-Tab or a Dock click on
   a waiting tab switches to it too.
 - **Moving a group:** whatever moves the shown window moves the group. Snap it with
   Grid (F5 / F6, ⌃⌥ arrows, maximize) and the strip follows; dragging the window by
   its title bar moves the group too. When the strip wouldn't fit above (Grid's halves
-  start at the top of the screen), the window gives up the top 30 points so the strip
+  start at the top of the screen), the window gives up the top 36 points so the strip
   and window together fill the half.
 - **Rearranging:** drag a tab along the strip to reorder it. Drag it off the strip to
   take it out of the group, or onto another window's title bar to move it there.
@@ -93,7 +94,7 @@ editing it.
 ```json
 {
   "hotkeys": { "next-tab": "ctrl+alt+]", "tab/1": "ctrl+alt+1", "previous-tab": "" },
-  "stripHeight": 30,
+  "stripHeight": 36,
   "maxTabWidth": 280,
   "holdDelay": 0.35,
   "dropZoneHeight": 80,
@@ -120,7 +121,8 @@ Sources/Espalier       the macOS app (AppKit, Accessibility, Carbon hot keys)
   EventTap.swift       watches mouse drags (never blocks on another app)
 ```
 
-A strip is a non-activating panel ordered directly above its group's shown window, so
+A strip is a capsule of the system's glass (Liquid Glass on macOS 26, a translucent blur
+before that) in a non-activating panel ordered directly above its group's shown window, so
 windows in front of the group cover the strip too, and clicking a tab never takes
 focus from your apps. Waiting tabs are moved off screen with a one-point sliver left,
 the way macOS tiling tools hide windows.
