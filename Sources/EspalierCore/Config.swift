@@ -13,6 +13,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// How long, in seconds, a dragged window has to hover over another window's title bar
     /// (or a tab strip) before letting go makes it a tab. Stops quick moves making tabs by accident.
     public var holdDelay: Double = 0.35
+    /// How far down from the top of a window, in points, a dragged window can be let go to
+    /// become a tab: the title bar and a margin below it. The drop outline shows this area.
+    public var dropZoneHeight: Double = 80
     /// When a window snapped to half the screen needs more width than that, give its side
     /// the room and narrow the window on the other side.
     public var widenSides = true
@@ -28,6 +31,7 @@ public struct Config: Codable, Equatable, Sendable {
         stripHeight = try c.decodeIfPresent(Double.self, forKey: .stripHeight) ?? d.stripHeight
         maxTabWidth = try c.decodeIfPresent(Double.self, forKey: .maxTabWidth) ?? d.maxTabWidth
         holdDelay = try c.decodeIfPresent(Double.self, forKey: .holdDelay) ?? d.holdDelay
+        dropZoneHeight = try c.decodeIfPresent(Double.self, forKey: .dropZoneHeight) ?? d.dropZoneHeight
         widenSides = try c.decodeIfPresent(Bool.self, forKey: .widenSides) ?? d.widenSides
         excludedBundleIDs = try c.decodeIfPresent([String].self, forKey: .excludedBundleIDs) ?? d.excludedBundleIDs
     }

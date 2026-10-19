@@ -12,10 +12,10 @@ manager, which is on the `espalier-window-manager` branch.
 
 ## How it works
 
-- **Making tabs:** drag a window by its title bar onto another window's title bar (or
-  onto a tab strip) and hold it there for a moment. A blue outline appears; let go and
-  they share a strip of tabs above the window. A quick drag across a title bar doesn't
-  make tabs.
+- **Making tabs:** drag a window by its title bar onto the top of another window (its
+  title bar or just below, or its tab strip) and hold it there for a moment. An outline
+  in your accent colour shows the area; let go inside it and they share a strip of tabs
+  above the window. A quick drag across another window doesn't make tabs.
 - **Switching:** click a tab. Only the chosen tab is shown; the others wait just off
   the screen's corner and take the same place when chosen. Cmd-Tab or a Dock click on
   a waiting tab switches to it too.
@@ -70,7 +70,7 @@ Espalier's own shortcuts stay clear of Grid's ⌃⌥ letters and arrows.
 
 | To | Do this |
 |---|---|
-| Make tabs | Drag a window onto another's title bar or strip, hold, let go |
+| Make tabs | Drag a window onto the top of another (or its strip), hold, let go |
 | Switch tab | Click it, or ⌃⌥] / ⌃⌥[ for the next / previous tab |
 | Reorder | Drag a tab along the strip |
 | Take a tab out | Drag it off the strip, or choose Take Window Out of Its Group |
@@ -96,6 +96,7 @@ editing it.
   "stripHeight": 30,
   "maxTabWidth": 280,
   "holdDelay": 0.35,
+  "dropZoneHeight": 80,
   "widenSides": true,
   "excludedBundleIDs": ["com.apple.systempreferences"]
 }

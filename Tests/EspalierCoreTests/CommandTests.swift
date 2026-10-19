@@ -64,9 +64,11 @@ struct CommandTests {
     }
 
     @Test func testConfigDecodesPartialFiles() throws {
-        let json = #"{"stripHeight": 26, "widenSides": false, "excludedBundleIDs": ["com.example"]}"#
+        let json = #"{"stripHeight": 26, "dropZoneHeight": 120, "widenSides": false, "excludedBundleIDs": ["com.example"]}"#
         let config = try Config.decode(Data(json.utf8))
         #expect(config.stripHeight == 26)
+        #expect(config.dropZoneHeight == 120)
+        #expect(Config().dropZoneHeight == 80)
         #expect(!config.widenSides)
         #expect(config.excludedBundleIDs == ["com.example"])
         #expect(config.holdDelay == Config().holdDelay)

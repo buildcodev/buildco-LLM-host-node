@@ -341,8 +341,8 @@ final class TabManager: NSObject {
 
     // MARK: Grouping
 
-    /// Where a dragged window let go at `p` would become a tab: a strip, or the title bar of
-    /// the frontmost window under the pointer.
+    /// Where a dragged window let go at `p` would become a tab: a strip, or the top of the
+    /// frontmost window under the pointer (its title bar and a little below, `dropZoneHeight`).
     private func dropTarget(at p: Point, excluding dragged: WindowID) -> WindowID? {
         let ownGroup = tabs.group(containing: dragged)?.windows ?? [dragged]
         let pid = getpid()
@@ -356,15 +356,16 @@ final class TabManager: NSObject {
             }
             if entry.id == dragged { continue }
             guard tracker.windows[entry.id] != nil, !ownGroup.contains(entry.id) else { return nil }
-            return p.y - Double(entry.bounds.minY) < 36 ? entry.id : nil
+            return p.y - Double(entry.bounds.minY) < config.dropZoneHeight ? entry.id : nil
         }
         return nil
     }
 
-    /// The outline for a drop target: its strip and title bar.
+    /// The outline for a drop target: its strip and the top of the window, the area where
+    /// letting go makes a tab.
     private func highlightRect(for target: WindowID) -> Rect? {
         guard let frame = tracker.windows[target]?.frame else { return nil }
-        let titleBar = Rect(x: frame.x, y: frame.y, width: frame.width, height: 36)
+        let titleBar = Rect(x: frame.x, y: frame.y, width: frame.width, height: min(config.dropZoneHeight, frame.height))
         guard tabs.group(containing: target) != nil else { return titleBar }
         return TabStripLayout.strip(above: frame, height: config.stripHeight).union(titleBar)
     }
