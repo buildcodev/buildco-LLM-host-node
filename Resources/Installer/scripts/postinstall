@@ -1,0 +1,31 @@
+#!/bin/bash
+# Runs as root once Espalier.app is in /Applications.
+#  - If Grid is installed, gives it the same window shortcuts as the Mac this installer was
+#    built on (grid-shortcuts.txt: F5 left half, F6 right half, ...). Only shortcut settings
+#    are written; nothing about Grid's license.
+#  - Opens Grid and Espalier for the logged-in user. Espalier then asks for Accessibility
+#    permission and turns on Open at Login.
+here=$(dirname "$0")
+user=$(stat -f%Su /dev/console)
+if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "loginwindow" ]; then
+  exit 0
+fi
+uid=$(id -u "$user")
+as_user() { launchctl asuser "$uid" sudo -u "$user" "$@"; }
+
+if [ -d /Applications/Grid.app ] && [ -f "$here/grid-shortcuts.txt" ]; then
+  # Grid writes its settings when it quits, so it's quit first and reopened after.
+  if pgrep -x Grid >/dev/null; then
+    pkill -TERM -x Grid
+    sleep 1
+  fi
+  while read -r type key value; do
+    case "$type" in
+      data|bool) as_user defaults write app.macgrid.Grid "$key" "-$type" "$value" ;;
+    esac
+  done < "$here/grid-shortcuts.txt"
+  as_user open -g -a /Applications/Grid.app
+fi
+
+as_user open /Applications/Espalier.app
+exit 0

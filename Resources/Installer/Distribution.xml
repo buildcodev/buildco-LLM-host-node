@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Espalier</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="never" require-scripts="true" hostArchitectures="arm64"/>
+    <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="14.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <installation-check script="checkGrid()"/>
+    <script><![CDATA[
+    // Espalier is made to work with Grid. When Grid isn't there, say so, but let the
+    // installation go ahead: tabs work on their own too.
+    function checkGrid() {
+        if (system.files.fileExistsAtPath('/Applications/Grid.app')) { return true; }
+        my.result.type = 'Warning';
+        my.result.title = 'Grid isn’t installed on this Mac';
+        my.result.message = 'Espalier works alongside Grid, which snaps windows to halves (F5 and F6). '
+            + 'Get Grid from its developer at macgrid.app, then run this installer again to give it '
+            + 'the same shortcuts. You can continue without it.';
+        return false;
+    }
+    ]]></script>
+    <choices-outline>
+        <line choice="default">
+            <line choice="dev.buildco.espalier.pkg"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="dev.buildco.espalier.pkg" visible="false">
+        <pkg-ref id="dev.buildco.espalier.pkg"/>
+    </choice>
+    <pkg-ref id="dev.buildco.espalier.pkg" version="@VERSION@" onConclusion="none">Espalier-component.pkg</pkg-ref>
+</installer-gui-script>

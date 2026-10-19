@@ -1,0 +1,11 @@
+#!/bin/bash
+# Runs as root before Espalier.app is replaced. Quits a running Espalier the normal way
+# (it treats SIGTERM like Quit), so the tabs it keeps off screen are put back first.
+if pgrep -x Espalier >/dev/null; then
+  pkill -TERM -x Espalier
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -x Espalier >/dev/null || break
+    sleep 0.5
+  done
+fi
+exit 0

@@ -47,17 +47,34 @@ Requires macOS 14 Sonoma or later. Build it with Swift 5.9+ (Xcode 15 or later, 
 just the Command Line Tools):
 
 ```sh
-scripts/bundle.sh            # builds dist/Espalier.app
+scripts/bundle.sh            # builds dist/Espalier.app (add --universal for Intel too)
 cp -R dist/Espalier.app /Applications/
 open /Applications/Espalier.app
 ```
 
 Espalier asks for **Accessibility** permission in System Settings → Privacy &
-Security. It's required: it's how one app moves another app's windows.
+Security. It's required: it's how one app moves another app's windows. It opens at login
+from its first run on; **Open at Login** in its menu turns that off and on.
 
 The app is signed ad hoc, so macOS treats each rebuild as a new app. After rebuilding
 you may need to switch Accessibility off and on again for Espalier. Set
 `CODESIGN_IDENTITY` to a Developer ID identity to avoid this.
+
+### On other Macs
+
+```sh
+scripts/package.sh           # builds dist/Espalier-<version>.pkg (Apple silicon)
+```
+
+The installer puts Espalier in /Applications (quitting an older copy first), opens it,
+and, when Grid is installed on that Mac, gives Grid the same shortcuts as the Mac the
+package was built on (F5 left half, F6 right half, and the rest; shortcut settings only,
+never Grid's license). When Grid isn't installed it warns, and links to its developer.
+Grid isn't bundled: get it from its developer.
+
+The package isn't signed with a Developer ID, so the first time it's opened macOS refuses
+it: choose **Open Anyway** in System Settings → Privacy & Security, then open it again.
+On each Mac, switch on Espalier (and Grid) in Accessibility once.
 
 Don't run it alongside another tool that hides windows in tabs or lays them out
 (TrellisWM, for example): the menu bar item warns when TrellisWM is running.
