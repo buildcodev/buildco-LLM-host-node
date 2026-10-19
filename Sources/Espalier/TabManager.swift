@@ -38,6 +38,9 @@ final class TabManager: NSObject {
 
     private var tabs = TabGroups()
     private var windowInfo: [WindowID: WindowInfo] = [:]
+    /// Saved groups whose windows aren't all seen yet (see `restorePending`).
+    private var pendingGroups: [TabGroup] = []
+    private var pendingInfo: [WindowID: WindowInfo] = [:]
     /// The narrowest each app's windows will go, by bundle id.
     private var minimumWidths: [String: Double] = [:]
     private var displays: [Display] = []
@@ -144,22 +147,50 @@ final class TabManager: NSObject {
         let snapshot = store.loadSnapshot()
         minimumWidths = snapshot?.minimumWidths ?? [:]
         for window in tracker.windows.values where window.isMinimized { minimized.insert(window.id) }
-        if let snapshot {
-            var restored = snapshot.tabs
-            let saved = snapshot.windowInfo.filter { restored.allWindows.contains($0.key) }
-            let mapping = WindowMatcher.match(saved: saved, live: tracker.windows.mapValues(\.info))
-            restored.remap(mapping)
-            tabs = restored
-        }
-        for id in tabs.allWindows { windowInfo[id] = tracker.windows[id]?.info }
-        for g in tabs.groups {
-            if !minimized.contains(g.active) { setFrame(g.active, g.frame) }
-            for id in g.hidden where !minimized.contains(id) { park(id) }
-        }
+        pendingGroups = snapshot?.tabs.groups ?? []
+        pendingInfo = snapshot?.windowInfo ?? [:]
+        restorePending()
         // A window left off screen by a crash comes back.
-        for w in tracker.windows.values where !tabs.allWindows.contains(w.id) {
+        for w in tracker.windows.values where !tabs.allWindows.contains(w.id) && !isPending(w.id) {
             if let frame = w.frame { rescueIfStranded(w, frame: frame) }
         }
+        syncStrips()
+    }
+
+    private func isPending(_ id: WindowID) -> Bool {
+        pendingGroups.contains { $0.windows.contains(id) }
+    }
+
+    /// Brings back saved groups once all their windows are accounted for. Accessibility only
+    /// sees windows on the Spaces being shown, so a window the window server still has (on
+    /// another Space) is waited for. A window that's gone is matched by app and title, for an
+    /// app that restarted, or dropped.
+    private func restorePending() {
+        guard !pendingGroups.isEmpty else { return }
+        let existing = WindowList.allIDs()
+        var waiting: [TabGroup] = []
+        for saved in pendingGroups {
+            if saved.windows.contains(where: { tracker.windows[$0] == nil && existing.contains($0) }) {
+                waiting.append(saved)
+                continue
+            }
+            let gone = Set(saved.windows.filter { tracker.windows[$0] == nil })
+            let candidates = tracker.windows.filter { !tabs.allWindows.contains($0.key) && !isPending($0.key) }.mapValues(\.info)
+            let matched = WindowMatcher.match(saved: pendingInfo.filter { gone.contains($0.key) }, live: candidates)
+            var mapping: [WindowID: WindowID] = [:]
+            for id in saved.windows { mapping[id] = gone.contains(id) ? matched[id] : id }
+            var one = TabGroups(groups: [saved])
+            one.remap(mapping)
+            guard let g = one.groups.first else { continue }
+            tabs.adopt(g)
+            guard let adopted = tabs.group(containing: g.active) else { continue }
+            logger.info("Restored a group of \(adopted.windows.count) tabs")
+            for id in adopted.windows { windowInfo[id] = tracker.windows[id]?.info }
+            if !minimized.contains(adopted.active) { setFrame(adopted.active, adopted.frame) }
+            for id in adopted.hidden where !minimized.contains(id) { park(id) }
+        }
+        pendingGroups = waiting
+        if !waiting.isEmpty { logger.info("\(waiting.count) saved group(s) wait for windows on other Spaces") }
         syncStrips()
         scheduleSave()
     }
@@ -582,7 +613,11 @@ final class TabManager: NSObject {
             if let w = tracker.windows[id] { windowInfo[id] = w.info }
         }
         windowInfo = windowInfo.filter { tabs.allWindows.contains($0.key) }
-        store.save(TabsSnapshot(tabs: tabs, windowInfo: windowInfo, minimumWidths: minimumWidths))
+        // Groups still waiting for their windows are kept for next time.
+        var info = windowInfo
+        for g in pendingGroups { for id in g.windows { info[id] = pendingInfo[id] } }
+        let all = TabGroups(groups: tabs.groups + pendingGroups)
+        store.save(TabsSnapshot(tabs: all, windowInfo: info, minimumWidths: minimumWidths))
         onChange?()
     }
 
@@ -642,7 +677,12 @@ extension TabManager: WindowTrackerDelegate {
     func trackerAdded(_ window: TrackedWindow) {
         guard started else { return }
         if window.isMinimized { minimized.insert(window.id) }
-        if !restoring, let frame = window.frame { rescueIfStranded(window, frame: frame) }
+        guard !restoring else { return }
+        // A window on a Space the user just came to may complete a saved group.
+        if isPending(window.id) { restorePending() }
+        if !tabs.allWindows.contains(window.id), !isPending(window.id), let frame = window.frame {
+            rescueIfStranded(window, frame: frame)
+        }
     }
 
     func trackerRemoved(_ id: WindowID) {

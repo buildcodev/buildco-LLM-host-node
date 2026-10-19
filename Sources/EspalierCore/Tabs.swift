@@ -145,6 +145,12 @@ public struct TabGroups: Codable, Equatable, Sendable {
         groups[i] = g
     }
 
+    /// Adds a whole group, such as one restored after a restart. Windows already in a group
+    /// stay where they are; a group left with fewer than two windows isn't added.
+    public mutating func adopt(_ group: TabGroup) {
+        insert(group)
+    }
+
     public mutating func setFrame(_ frame: Rect, ofGroupContaining window: WindowID) {
         guard let i = groupIndex(of: window) else { return }
         groups[i].frame = frame

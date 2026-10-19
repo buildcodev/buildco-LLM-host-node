@@ -98,6 +98,17 @@ struct TabsTests {
         #expect(tabs.groups == [TabGroup(windows: [11, 12], active: 11, frame: frame)])
     }
 
+    @Test func testAdoptingARestoredGroup() {
+        var tabs = TabGroups()
+        tabs.add(2, to: 1, frame: frame)
+        tabs.adopt(TabGroup(windows: [3, 4], active: 4, frame: frame))
+        #expect(tabs.group(containing: 3)?.active == 4)
+        // A window already grouped stays put; what's left is too small to be a group.
+        tabs.adopt(TabGroup(windows: [2, 5], active: 5, frame: frame))
+        #expect(tabs.group(containing: 2)?.windows == [1, 2])
+        #expect(tabs.group(containing: 5) == nil)
+    }
+
     @Test func testFrameChanges() {
         let start = Rect(x: 100, y: 100, width: 800, height: 600)
         #expect(FrameChange(from: start, to: Rect(x: 101, y: 99, width: 800.5, height: 600)) == .none)
