@@ -338,6 +338,7 @@ final class TabManager: NSObject {
             self?.scheduleSave()
         }
         view.onTearOff = { [weak self] id, point in self?.tearOff(id, at: point) }
+        view.onClose = { [weak self] id, quitApp in self?.close(id, quitApp: quitApp) }
         return panel
     }
 
@@ -430,6 +431,33 @@ final class TabManager: NSObject {
             if !minimized.contains(lone) {
                 setFrame(lone, TabStripLayout.region(of: removal.frame, stripHeight: config.stripHeight))
             }
+        }
+    }
+
+    /// A tab's × was clicked: closes its window, like closing a browser tab. With ⌥, quits
+    /// the window's app instead.
+    private func close(_ id: WindowID, quitApp: Bool) {
+        guard let w = tracker.windows[id] else { return }
+        if quitApp {
+            logger.info("Quitting \(w.bundleID, privacy: .public) from its tab")
+            NSRunningApplication(processIdentifier: w.pid)?.terminate()
+            return
+        }
+        // A waiting tab is shown first, so whatever the app asks before closing (unsaved
+        // changes, for one) appears where it can be seen.
+        if tabs.isHidden(id) { show(id, focus: true) }
+        logger.info("Closing tab \(id)")
+        if let button = w.element.element(kAXCloseButtonAttribute),
+           AXUIElementPerformAction(button, kAXPressAction as CFString) == .success {
+            return
+        }
+        // No close button to press: ask the app the way its File menu would, with ⌘W.
+        focus(id)
+        let source = CGEventSource(stateID: .hidSystemState)
+        for down in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: 13, keyDown: down) // W
+            event?.flags = .maskCommand
+            event?.postToPid(w.pid)
         }
     }
 

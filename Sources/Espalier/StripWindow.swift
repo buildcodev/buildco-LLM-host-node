@@ -125,11 +125,15 @@ final class StripView: NSView {
     var onReorder: ((WindowID, Int) -> Void)?
     /// A tab dragged off the strip: the tab and where it was let go (global, top-left coordinates).
     var onTearOff: ((WindowID, Point) -> Void)?
+    /// A tab's × clicked: the tab, and whether ⌥ was held (quit its app instead of closing it).
+    var onClose: ((WindowID, Bool) -> Void)?
 
     private var pressed: (tab: WindowID, at: NSPoint)?
+    private var pressedClose: WindowID?
     private var dragging = false
     private var insertion: Int?
     private var hovered: WindowID?
+    private var hoveredClose: WindowID?
 
     /// Room between the capsule's ends and the first and last tab.
     private static let endPadding: CGFloat = 4
@@ -146,6 +150,17 @@ final class StripView: NSView {
 
     private func tabRects() -> [CGRect] {
         TabStripLayout.tabRects(in: tabArea, count: tabs.count, maxWidth: maxTabWidth).map(\.cgRect)
+    }
+
+    /// The × at the right end of a tab, when the tab is wide enough to have one.
+    private func closeRect(in chip: CGRect) -> CGRect? {
+        guard chip.width >= 64 else { return nil }
+        let side: CGFloat = 18
+        return CGRect(x: chip.maxX - side - 5, y: chip.midY - side / 2, width: side, height: side)
+    }
+
+    private func chipRects() -> [CGRect] {
+        tabRects().map { $0.insetBy(dx: 2, dy: 3) }
     }
 
     private var isDark: Bool {
@@ -171,7 +186,9 @@ final class StripView: NSView {
                 NSColor.labelColor.withAlphaComponent(0.16).setFill()
                 NSRect(x: r.maxX - 0.5, y: r.minY + 10, width: 1, height: r.height - 20).fill()
             }
-            drawLabel(look, in: chip, active: isActive)
+            let close = closeRect(in: chip)
+            if let close { drawClose(close, active: isActive, hovered: tab == hoveredClose) }
+            drawLabel(look, in: chip, active: isActive, endingAt: close.map { $0.minX - 4 } ?? chip.maxX - 10)
         }
         if let insertion, dragging {
             let x = insertion < rects.count ? rects[insertion].minX : (rects.last?.maxX ?? 0)
@@ -196,7 +213,26 @@ final class StripView: NSView {
         path.stroke()
     }
 
-    private func drawLabel(_ look: WindowLook?, in chip: CGRect, active: Bool) {
+    /// A tab's ×: a cross, with a soft circle behind it while the pointer is over it.
+    private func drawClose(_ rect: CGRect, active: Bool, hovered: Bool) {
+        if hovered {
+            let circle = NSBezierPath(ovalIn: rect)
+            NSColor.labelColor.withAlphaComponent(isDark ? 0.18 : 0.12).setFill()
+            circle.fill()
+        }
+        let arm: CGFloat = 4
+        let cross = NSBezierPath()
+        cross.move(to: NSPoint(x: rect.midX - arm, y: rect.midY - arm))
+        cross.line(to: NSPoint(x: rect.midX + arm, y: rect.midY + arm))
+        cross.move(to: NSPoint(x: rect.midX + arm, y: rect.midY - arm))
+        cross.line(to: NSPoint(x: rect.midX - arm, y: rect.midY + arm))
+        cross.lineWidth = 1.6
+        cross.lineCapStyle = .round
+        NSColor.labelColor.withAlphaComponent(hovered ? 0.9 : (active ? 0.7 : 0.5)).setStroke()
+        cross.stroke()
+    }
+
+    private func drawLabel(_ look: WindowLook?, in chip: CGRect, active: Bool, endingAt textEnd: CGFloat) {
         var textX = chip.minX + 10
         if let icon = look?.icon {
             let side = min(18, chip.height - 6)
@@ -214,7 +250,7 @@ final class StripView: NSView {
         ]
         // Centred on the font's own height, so the text has even room above and below.
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
-        let rect = CGRect(x: textX, y: chip.midY - lineHeight / 2, width: max(0, chip.maxX - textX - 10), height: lineHeight)
+        let rect = CGRect(x: textX, y: chip.midY - lineHeight / 2, width: max(0, textEnd - textX), height: lineHeight)
         ((look?.title ?? "") as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attributes)
     }
 
@@ -229,19 +265,32 @@ final class StripView: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let tab = tabRects().firstIndex { $0.contains(p) }.map { tabs[$0] }
-        if tab != hovered {
+        let close = closeTab(at: p)
+        if tab != hovered || close != hoveredClose {
             hovered = tab
+            hoveredClose = close
             needsDisplay = true
         }
     }
 
     override func mouseExited(with event: NSEvent) {
         hovered = nil
+        hoveredClose = nil
         needsDisplay = true
+    }
+
+    /// The tab whose × is under `p`.
+    private func closeTab(at p: NSPoint) -> WindowID? {
+        for (tab, chip) in zip(tabs, chipRects()) where closeRect(in: chip)?.contains(p) == true { return tab }
+        return nil
     }
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
+        if let tab = closeTab(at: p) {
+            pressedClose = tab
+            return
+        }
         guard let i = tabRects().firstIndex(where: { $0.contains(p) }) else { return }
         pressed = (tabs[i], p)
         dragging = false
@@ -265,8 +314,14 @@ final class StripView: NSView {
             NSCursor.arrow.set()
             needsDisplay = true
         }
-        guard let pressed else { return }
         let p = convert(event.locationInWindow, from: nil)
+        if let tab = pressedClose {
+            pressedClose = nil
+            // Like a button: only when let go over the same ×.
+            if closeTab(at: p) == tab { onClose?(tab, event.modifierFlags.contains(.option)) }
+            return
+        }
+        guard let pressed else { return }
         if !dragging {
             onSelect?(pressed.tab)
         } else if isNearStrip(p) {

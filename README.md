@@ -34,8 +34,10 @@ manager, which is on the `espalier-window-manager` branch.
   the width is split in proportion to what each needs. Espalier learns each app's
   minimum the first time it refuses to shrink, and remembers it. Switching a group
   to a narrower tab moves the line back.
-- **Closing and minimizing:** close or minimize the shown tab and the next one takes
-  its place. A minimized tab comes back as the shown tab.
+- **Closing tabs:** each tab has an ×, like a browser tab. Clicking it closes that
+  window (a waiting tab is shown first, so a "save changes?" question can be seen);
+  ⌥-click quits the window's app instead. Close or minimize the shown tab any other way
+  and the next one takes its place. A minimized tab comes back as the shown tab.
 - **Restarts:** groups are saved and found again after Espalier or the apps restart.
   Quitting Espalier puts every waiting tab back on screen.
 
