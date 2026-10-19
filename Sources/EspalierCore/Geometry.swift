@@ -224,14 +224,3 @@ public enum Edge: String, Codable, Sendable, CaseIterable {
         }
     }
 }
-
-/// A screen line segment, used to draw the splits inside a collapsed group tile.
-public struct LineSegment: Hashable, Codable, Sendable {
-    public var from: Point
-    public var to: Point
-
-    public init(from: Point, to: Point) {
-        self.from = from
-        self.to = to
-    }
-}

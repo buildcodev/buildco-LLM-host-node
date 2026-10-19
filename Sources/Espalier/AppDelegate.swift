@@ -4,15 +4,15 @@ import EspalierCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let store = StateStore()
-    private var manager: WindowManager!
+    private var manager: TabManager!
     private var statusItem: NSStatusItem!
     private var trustTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        manager = WindowManager(store: store)
+        manager = TabManager(store: store)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "square.grid.3x1.below.line.grid.1x2", accessibilityDescription: "Espalier")
-            ?? NSImage(systemSymbolName: "rectangle.split.2x2", accessibilityDescription: "Espalier")
+        statusItem.button?.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "Espalier")
+            ?? NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: "Espalier")
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.delegate = self
@@ -57,40 +57,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(note("Espalier needs Accessibility access to move windows."))
             menu.addItem(.separator())
         }
-
-        let navigation: [(String, Command)] = [
-            ("Zoom Out", .zoomOut), ("Zoom In", .zoomIn), ("Overview", .overview),
-            ("Back", .back), ("Forward", .forward), ("Fill Screen with Window", .maximize),
-        ]
-        for (title, command) in navigation { menu.addItem(commandItem(title, command, shortcuts)) }
-        menu.addItem(.separator())
-        let arranging: [(String, Command)] = [
-            ("Arrange Floating Windows", .arrange), ("Dock or Float Window", .toggleFloat),
-            ("Next Tab", .nextTab), ("Previous Tab", .previousTab), ("Put Windows Back", .relayout),
-        ]
-        for (title, command) in arranging { menu.addItem(commandItem(title, command, shortcuts)) }
-
-        let views = NSMenu()
-        views.autoenablesItems = false
-        let saved = manager.savedViews
-        for slot in 1...9 {
-            let go = commandItem("Go to View \(slot)", .view(slot), shortcuts)
-            go.isEnabled = saved.contains(slot)
-            views.addItem(go)
+        if NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == "app.trellisui.trelliswm" }) {
+            menu.addItem(note("⚠︎ TrellisWM is running: quit it so the two don't fight"))
+            menu.addItem(.separator())
         }
-        views.addItem(.separator())
-        for slot in 1...9 { views.addItem(commandItem("Save Current View as \(slot)", .saveView(slot), shortcuts)) }
-        let viewsItem = NSMenuItem(title: "Saved Views", action: nil, keyEquivalent: "")
-        viewsItem.submenu = views
-        menu.addItem(viewsItem)
-
+        let count = manager.groupCount
+        menu.addItem(note(count == 0 ? "Drag a window onto another's title bar to make tabs" : "\(count) tab group\(count == 1 ? "" : "s")"))
         menu.addItem(.separator())
-        if !manager.snapshotter.isAuthorized {
-            menu.addItem(item("Show Window Contents While Zooming…", #selector(grantScreenRecording)))
-        }
+        let commands: [(String, Command)] = [
+            ("Next Tab", .nextTab), ("Previous Tab", .previousTab),
+            ("Take Window Out of Its Group", .ungroup), ("Ungroup Everything", .ungroupAll),
+        ]
+        for (title, command) in commands { menu.addItem(commandItem(title, command, shortcuts)) }
+        menu.addItem(.separator())
         menu.addItem(item("Open Settings File", #selector(openConfig)))
         menu.addItem(item("Reload Settings", #selector(reloadConfig)))
-        menu.addItem(item("Reset This Display's Layout", #selector(resetLayout)))
         for problem in manager.problems.prefix(5) { menu.addItem(note("⚠︎ " + problem)) }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Espalier", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -133,10 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func grantScreenRecording() {
-        manager.snapshotter.requestAccess()
-    }
-
     @objc private func openConfig() {
         _ = store.loadConfig()
         NSWorkspace.shared.open(store.configURL)
@@ -144,10 +121,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func reloadConfig() {
         manager.reloadConfig()
-    }
-
-    @objc private func resetLayout() {
-        manager.resetActiveDisplay()
     }
 }
 #endif

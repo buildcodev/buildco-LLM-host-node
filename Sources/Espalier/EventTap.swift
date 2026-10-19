@@ -6,13 +6,7 @@ protocol EventTapHandler: AnyObject {
     func mouseDown(at point: CGPoint, clickCount: Int, flags: CGEventFlags) -> Bool
     func mouseDragged(to point: CGPoint, flags: CGEventFlags) -> Bool
     func mouseUp(at point: CGPoint, flags: CGEventFlags) -> Bool
-    func magnify(by amount: Double, phase: NSEvent.Phase, at point: CGPoint, flags: CGEventFlags) -> Bool
 }
-
-/// CGEventType has no cases for trackpad gestures, but they pass through taps. Pinches arrive as
-/// NSEventTypeGesture (29) and become `.magnify` once converted to an NSEvent; 30 is
-/// NSEventTypeMagnify itself, listened to as well in case it's delivered directly.
-private let gestureEventTypes: [UInt32] = [29, 30]
 
 private func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     guard let refcon else { return Unmanaged.passUnretained(event) }
@@ -20,7 +14,7 @@ private func eventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: 
     return tap.handle(type: type, event: event) ? nil : Unmanaged.passUnretained(event)
 }
 
-/// A session event tap for left-mouse drags (docking, resizing gaps, clicking tiles) and pinches.
+/// A session event tap that watches left-mouse drags, for dragging a window onto another's title bar.
 final class EventTap {
     weak var handler: EventTapHandler?
     private var port: CFMachPort?
@@ -32,7 +26,7 @@ final class EventTap {
         let types: [UInt32] = [
             CGEventType.leftMouseDown.rawValue, CGEventType.leftMouseUp.rawValue,
             CGEventType.leftMouseDragged.rawValue,
-        ] + gestureEventTypes
+        ]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1)) }
         guard let port = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
@@ -74,9 +68,6 @@ final class EventTap {
             return handler.mouseDragged(to: point, flags: event.flags)
         case CGEventType.leftMouseUp.rawValue:
             return handler.mouseUp(at: point, flags: event.flags)
-        case let raw where gestureEventTypes.contains(raw):
-            guard let ns = NSEvent(cgEvent: event), ns.type == .magnify else { return false }
-            return handler.magnify(by: Double(ns.magnification), phase: ns.phase, at: point, flags: event.flags)
         default:
             return false
         }

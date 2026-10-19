@@ -5,20 +5,16 @@ import Testing
 struct CommandTests {
     @Test func testURLParsing() {
         func parse(_ s: String) -> Command? { Command(url: URL(string: s)!) }
-        #expect(parse("espalier://arrange") == .arrange)
-        #expect(parse("espalier://back") == .back)
-        #expect(parse("espalier://zoom-out") == .zoomOut)
-        #expect(parse("ESPALIER://Zoom-Out") == .zoomOut)
-        #expect(parse("espalier://view/3") == .view(3))
-        #expect(parse("espalier://view?n=4") == .view(4))
-        #expect(parse("espalier://save-view/9") == .saveView(9))
-        #expect(parse("espalier://focus/left") == .focus(.left))
-        #expect(parse("espalier://focus?direction=up") == .focus(.top))
-        #expect(parse("espalier://dock/bottom") == .dock(.bottom))
-        #expect(parse("espalier://view/10") == nil)
-        #expect(parse("espalier://view") == nil)
-        #expect(parse("espalier://nonsense") == nil)
-        #expect(parse("https://zoom-out") == nil)
+        #expect(parse("espalier://next-tab") == .nextTab)
+        #expect(parse("ESPALIER://Previous-Tab") == .previousTab)
+        #expect(parse("espalier://tab/3") == .tab(3))
+        #expect(parse("espalier://tab?n=4") == .tab(4))
+        #expect(parse("espalier://ungroup") == .ungroup)
+        #expect(parse("espalier://ungroup-all") == .ungroupAll)
+        #expect(parse("espalier://tab/10") == nil)
+        #expect(parse("espalier://tab") == nil)
+        #expect(parse("espalier://zoom-out") == nil)
+        #expect(parse("https://next-tab") == nil)
     }
 
     @Test func testEveryCommandRoundTripsThroughItsURLAndName() {
@@ -41,39 +37,39 @@ struct CommandTests {
         #expect(Hotkey("ctrl+alt+up")?.description == "⌃⌥↑")
     }
 
-    @Test func testDefaultBindingsAreValidAndUnique() {
+    @Test func testDefaultBindingsAreValidAndClearOfGrid() {
         let (bindings, problems) = Config().bindings()
         #expect(problems == [])
-        #expect(bindings.count == Config.defaultHotkeys.count)
-        #expect(bindings[Hotkey("ctrl+alt+up")!] == .zoomOut)
-        #expect(bindings[Hotkey("ctrl+alt+shift+3")!] == .saveView(3))
+        #expect(bindings[Hotkey("ctrl+alt+]")!] == .nextTab)
+        #expect(bindings[Hotkey("ctrl+alt+[")!] == .previousTab)
+        // Grid uses ⌃⌥ with arrows, Return and letters.
+        #expect(bindings.keys.allSatisfy { !["up", "down", "left", "right", "return"].contains($0.key) && $0.key.count == 1 && !$0.key.first!.isLetter })
     }
 
     @Test func testUserBindingsOverrideAndDisable() {
         var config = Config()
-        config.hotkeys = ["zoom-out": "cmd+alt+up", "back": "", "bogus": "ctrl+x", "forward": "ctrl+alt+nope"]
+        config.hotkeys = ["next-tab": "cmd+alt+]", "previous-tab": "", "bogus": "ctrl+x", "ungroup": "ctrl+alt+nope"]
         let (bindings, problems) = config.bindings()
-        #expect(bindings[Hotkey("cmd+alt+up")!] == .zoomOut)
-        #expect(bindings[Hotkey("ctrl+alt+up")!] == nil)
-        #expect(!bindings.values.contains(.back))
+        #expect(bindings[Hotkey("cmd+alt+]")!] == .nextTab)
+        #expect(bindings[Hotkey("ctrl+alt+]")!] == nil)
+        #expect(!bindings.values.contains(.previousTab))
         #expect(problems.count == 2)
     }
 
     @Test func testConflictingBindingsAreReported() {
         var config = Config()
-        config.hotkeys = ["zoom-in": "ctrl+alt+up"]
+        config.hotkeys = ["ungroup": "ctrl+alt+]"]
         let (_, problems) = config.bindings()
         #expect(problems.count == 1)
     }
 
     @Test func testConfigDecodesPartialFiles() throws {
-        let json = #"{"metrics": {"gap": 12}, "docking": false, "excludedBundleIDs": ["com.example"]}"#
+        let json = #"{"stripHeight": 26, "widenSides": false, "excludedBundleIDs": ["com.example"]}"#
         let config = try Config.decode(Data(json.utf8))
-        #expect(config.metrics.gap == 12)
-        #expect(config.metrics.margin == LayoutMetrics().margin)
-        #expect(!config.docking)
+        #expect(config.stripHeight == 26)
+        #expect(!config.widenSides)
         #expect(config.excludedBundleIDs == ["com.example"])
-        #expect(config.animationDuration == Config().animationDuration)
+        #expect(config.holdDelay == Config().holdDelay)
         let roundTrip = try Config.decode(config.encoded())
         #expect(roundTrip == config)
     }
@@ -101,28 +97,29 @@ struct CommandTests {
     }
 
     @Test func testSnapshotRejectsNewerVersions() {
-        let json = #"{"version": 99, "displays": {}}"#
-        #expect(throws: (any Error).self) { try WorkspaceSnapshot.decode(Data(json.utf8)) }
+        let json = #"{"version": 99}"#
+        #expect(throws: (any Error).self) { try TabsSnapshot.decode(Data(json.utf8)) }
     }
-}
 
-struct PersistenceTests {
-    @Test func testHandEditedLayoutsAreNormalisedOnLoad() throws {
-        // A split with one child, a same-axis nested split, no desktop and a duplicate window.
+    @Test func testSnapshotRoundTrip() throws {
+        var tabs = TabGroups()
+        tabs.add(2, to: 1, frame: Rect(x: 0, y: 60, width: 1312, height: 1342))
+        let snapshot = TabsSnapshot(tabs: tabs, windowInfo: [1: WindowInfo(bundleID: "a", title: "x")], minimumWidths: ["com.microsoft.Outlook": 1368])
+        #expect(try TabsSnapshot.decode(snapshot.encoded()) == snapshot)
+    }
+
+    @Test func testHandEditedGroupsAreCleanedUpOnLoad() throws {
+        // Window 1 is in two groups, 3 is listed twice, and one group has a single window.
         let json = """
-        {"version": 1, "displays": {"main": {
-          "layout": {"root": {"type": "split", "id": "a", "axis": "horizontal", "weights": [1, 1], "children": [
-            {"type": "group", "id": "g1", "slots": [{"window": 1, "suspended": false}]},
-            {"type": "split", "id": "b", "axis": "horizontal", "weights": [1], "children": [
-              {"type": "group", "id": "g2", "slots": [{"window": 2, "suspended": false}, {"window": 1, "suspended": false}]}
-            ]}
-          ]}},
-          "navigation": {"current": {"windows": [], "desktop": false, "overview": true}, "back": [], "forward": [], "saved": {}},
-          "floating": [],
-          "windowInfo": []
-        }}}
+        {"version": 1, "tabs": {"groups": [
+          {"windows": [1, 2], "active": 9, "frame": {"x": 0, "y": 0, "width": 10, "height": 10}},
+          {"windows": [1, 3, 3, 4], "active": 4, "frame": {"x": 0, "y": 0, "width": 10, "height": 10}},
+          {"windows": [5], "active": 5, "frame": {"x": 0, "y": 0, "width": 10, "height": 10}}
+        ]}}
         """
-        let snapshot = try WorkspaceSnapshot.decode(Data(json.utf8))
-        #expect(snapshot.displays["main"]?.layout.shape == "row(1,2,D)")
+        let snapshot = try TabsSnapshot.decode(Data(json.utf8))
+        #expect(snapshot.tabs.groups.map(\.windows) == [[1, 2], [3, 4]])
+        #expect(snapshot.tabs.groups[0].active == 1)
+        #expect(snapshot.windowInfo.isEmpty && snapshot.minimumWidths.isEmpty)
     }
 }

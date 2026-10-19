@@ -3,22 +3,20 @@ import Foundation
 /// User settings, read from `~/Library/Application Support/Espalier/config.json`.
 /// Any key can be left out to keep its default.
 public struct Config: Codable, Equatable, Sendable {
-    public var metrics = LayoutMetrics()
-    /// Command name to shortcut, such as `"zoom-out": "ctrl+alt+up"`. Entries here are merged
+    /// Command name to shortcut, such as `"next-tab": "ctrl+alt+]"`. Entries here are merged
     /// over the defaults; an empty string turns a default shortcut off.
     public var hotkeys: [String: String] = [:]
-    /// Dragging a window onto an edge docks it.
-    public var docking = true
-    /// Hold this modifier while releasing a dragged window to keep it floating.
-    public var keepFloatingModifier = "shift"
-    /// Pinching while holding this modifier zooms the layout. Pinching over bare desktop always does.
-    public var pinchModifier = "alt"
-    public var gestures = true
-    /// How much pinch (in magnification units) steps the camera one level.
-    public var pinchStep = 0.2
-    /// Length of the camera animation, in seconds. 0 turns animation off.
-    public var animationDuration = 0.28
-    /// Apps whose windows are never managed.
+    /// Height of the tab strip above a group's window, in points.
+    public var stripHeight: Double = 30
+    /// The widest a single tab gets.
+    public var maxTabWidth: Double = 280
+    /// How long, in seconds, a dragged window has to hover over another window's title bar
+    /// (or a tab strip) before letting go makes it a tab. Stops quick moves making tabs by accident.
+    public var holdDelay: Double = 0.35
+    /// When a window snapped to half the screen needs more width than that, give its side
+    /// the room and narrow the window on the other side.
+    public var widenSides = true
+    /// Apps whose windows are never put in tabs.
     public var excludedBundleIDs: [String] = []
 
     public init() {}
@@ -26,41 +24,19 @@ public struct Config: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
-        metrics = try c.decodeIfPresent(LayoutMetrics.self, forKey: .metrics) ?? d.metrics
         hotkeys = try c.decodeIfPresent([String: String].self, forKey: .hotkeys) ?? d.hotkeys
-        docking = try c.decodeIfPresent(Bool.self, forKey: .docking) ?? d.docking
-        keepFloatingModifier = try c.decodeIfPresent(String.self, forKey: .keepFloatingModifier) ?? d.keepFloatingModifier
-        pinchModifier = try c.decodeIfPresent(String.self, forKey: .pinchModifier) ?? d.pinchModifier
-        gestures = try c.decodeIfPresent(Bool.self, forKey: .gestures) ?? d.gestures
-        pinchStep = try c.decodeIfPresent(Double.self, forKey: .pinchStep) ?? d.pinchStep
-        animationDuration = try c.decodeIfPresent(Double.self, forKey: .animationDuration) ?? d.animationDuration
+        stripHeight = try c.decodeIfPresent(Double.self, forKey: .stripHeight) ?? d.stripHeight
+        maxTabWidth = try c.decodeIfPresent(Double.self, forKey: .maxTabWidth) ?? d.maxTabWidth
+        holdDelay = try c.decodeIfPresent(Double.self, forKey: .holdDelay) ?? d.holdDelay
+        widenSides = try c.decodeIfPresent(Bool.self, forKey: .widenSides) ?? d.widenSides
         excludedBundleIDs = try c.decodeIfPresent([String].self, forKey: .excludedBundleIDs) ?? d.excludedBundleIDs
     }
 
-    public static let defaultHotkeys: [String: String] = {
-        var keys: [String: String] = [
-            "zoom-out": "ctrl+alt+up",
-            "zoom-in": "ctrl+alt+down",
-            "back": "ctrl+alt+left",
-            "forward": "ctrl+alt+right",
-            "overview": "ctrl+alt+o",
-            "maximize": "ctrl+alt+return",
-            "toggle-float": "ctrl+alt+f",
-            "arrange": "ctrl+alt+a",
-            "relayout": "ctrl+alt+r",
-            "next-tab": "ctrl+alt+]",
-            "previous-tab": "ctrl+alt+[",
-            "focus/left": "ctrl+alt+cmd+left",
-            "focus/right": "ctrl+alt+cmd+right",
-            "focus/top": "ctrl+alt+cmd+up",
-            "focus/bottom": "ctrl+alt+cmd+down",
-        ]
-        for n in 1...9 {
-            keys["view/\(n)"] = "ctrl+alt+\(n)"
-            keys["save-view/\(n)"] = "ctrl+alt+shift+\(n)"
-        }
-        return keys
-    }()
+    /// Shortcuts that stay clear of Grid's ⌃⌥ letters and arrows.
+    public static let defaultHotkeys: [String: String] = [
+        "next-tab": "ctrl+alt+]",
+        "previous-tab": "ctrl+alt+[",
+    ]
 
     /// The effective shortcut table: defaults overridden by the user's entries. Invalid
     /// entries are reported in `problems` and skipped.

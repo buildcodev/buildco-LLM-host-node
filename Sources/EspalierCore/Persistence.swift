@@ -1,19 +1,34 @@
 import Foundation
 
-/// Everything Espalier saves between runs: one `DisplayState` per display, keyed by the display's UUID.
-public struct WorkspaceSnapshot: Codable, Equatable, Sendable {
+/// Everything Espalier saves between runs, in `state.json`.
+public struct TabsSnapshot: Codable, Equatable, Sendable {
     public static let currentVersion = 1
 
     public var version: Int
-    public var displays: [String: DisplayState]
+    public var tabs: TabGroups
+    /// Each grouped window's app and title, to find it again after a restart.
+    public var windowInfo: [WindowID: WindowInfo]
+    /// The narrowest each app's windows will go (by bundle id), learned from windows that
+    /// refused to shrink. Used to widen a side before the app has to refuse again.
+    public var minimumWidths: [String: Double]
 
-    public init(displays: [String: DisplayState] = [:]) {
-        self.version = WorkspaceSnapshot.currentVersion
-        self.displays = displays
+    public init(tabs: TabGroups = TabGroups(), windowInfo: [WindowID: WindowInfo] = [:], minimumWidths: [String: Double] = [:]) {
+        self.version = TabsSnapshot.currentVersion
+        self.tabs = tabs
+        self.windowInfo = windowInfo
+        self.minimumWidths = minimumWidths
     }
 
-    public static func decode(_ data: Data) throws -> WorkspaceSnapshot {
-        let snapshot = try JSONDecoder().decode(WorkspaceSnapshot.self, from: data)
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        tabs = try c.decodeIfPresent(TabGroups.self, forKey: .tabs) ?? TabGroups()
+        windowInfo = try c.decodeIfPresent([WindowID: WindowInfo].self, forKey: .windowInfo) ?? [:]
+        minimumWidths = try c.decodeIfPresent([String: Double].self, forKey: .minimumWidths) ?? [:]
+    }
+
+    public static func decode(_ data: Data) throws -> TabsSnapshot {
+        let snapshot = try JSONDecoder().decode(TabsSnapshot.self, from: data)
         guard snapshot.version <= currentVersion else {
             throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Saved by a newer version of Espalier (\(snapshot.version))"))
         }

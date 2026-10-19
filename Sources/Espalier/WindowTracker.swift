@@ -34,6 +34,7 @@ protocol WindowTrackerDelegate: AnyObject {
     func trackerFrameChanged(_ id: WindowID)
     func trackerFocusChanged(pid: pid_t)
     func trackerAppHidden(pid: pid_t, _ hidden: Bool)
+    func trackerTitleChanged(_ id: WindowID)
 }
 
 private final class AppObservation {
@@ -232,7 +233,10 @@ final class WindowTracker: NSObject {
         case kAXWindowMovedNotification, kAXWindowResizedNotification:
             if let id = id(of: element) { delegate?.trackerFrameChanged(id) }
         case kAXTitleChangedNotification:
-            if let id = id(of: element) { windows[id]?.title = element.string(kAXTitleAttribute) ?? "" }
+            if let id = id(of: element) {
+                windows[id]?.title = element.string(kAXTitleAttribute) ?? ""
+                delegate?.trackerTitleChanged(id)
+            }
         case kAXFocusedWindowChangedNotification, kAXMainWindowChangedNotification:
             if let pid = element.pid { delegate?.trackerFocusChanged(pid: pid) }
         case kAXApplicationHiddenNotification:

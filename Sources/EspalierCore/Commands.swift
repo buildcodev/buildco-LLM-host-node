@@ -1,119 +1,67 @@
 import Foundation
 
-/// Every action Espalier exposes. Each one has a URL (`espalier://zoom-out`) and can
-/// be bound to a hotkey by the same name (`"zoom-out"`, `"view/3"`).
+/// Every action Espalier exposes. Each one has a URL (`espalier://next-tab`) and can be
+/// bound to a hotkey by the same name (`"next-tab"`, `"tab/3"`).
 public enum Command: Hashable, Sendable {
-    /// Dock every floating window on the display into the layout.
-    case arrange
-    /// Put every window back in its slot.
-    case relayout
-    case back
-    case forward
-    case zoomOut
-    case zoomIn
-    case overview
-    /// Fill the screen with the focused window's slot, or go back.
-    case maximize
-    /// Dock the focused window beside the desktop, or float it.
-    case toggleFloat
-    case focus(Edge)
-    /// Dock the focused window against an edge of the screen.
-    case dock(Edge)
-    case view(Int)
-    case saveView(Int)
+    /// Show the focused group's next tab.
     case nextTab
     case previousTab
+    /// Show the focused group's tab at a position, from 1.
+    case tab(Int)
+    /// Take the focused window out of its group.
+    case ungroup
+    /// Take every window out of every group.
+    case ungroupAll
 
     public static let scheme = "espalier"
 
     /// The command's name, as used in URLs and in the config file's hotkey table.
     public var name: String {
         switch self {
-        case .arrange: return "arrange"
-        case .relayout: return "relayout"
-        case .back: return "back"
-        case .forward: return "forward"
-        case .zoomOut: return "zoom-out"
-        case .zoomIn: return "zoom-in"
-        case .overview: return "overview"
-        case .maximize: return "maximize"
-        case .toggleFloat: return "toggle-float"
-        case .focus(let e): return "focus/\(e.rawValue)"
-        case .dock(let e): return "dock/\(e.rawValue)"
-        case .view(let n): return "view/\(n)"
-        case .saveView(let n): return "save-view/\(n)"
         case .nextTab: return "next-tab"
         case .previousTab: return "previous-tab"
+        case .tab(let n): return "tab/\(n)"
+        case .ungroup: return "ungroup"
+        case .ungroupAll: return "ungroup-all"
         }
     }
 
     public var url: URL { URL(string: "\(Command.scheme)://\(name)")! }
 
-    /// Parses a name such as `"zoom-out"` or `"view/3"`.
+    /// Parses a name such as `"next-tab"` or `"tab/3"`.
     public init?(name: String) {
         let parts = name.lowercased().split(separator: "/", omittingEmptySubsequences: true).map(String.init)
         guard let head = parts.first else { return nil }
         self.init(head: head, argument: parts.count > 1 ? parts[1] : nil)
     }
 
-    /// Parses `espalier://zoom-out`, `espalier://view/3`, `espalier://view?n=3` or `espalier://focus?direction=left`.
+    /// Parses `espalier://next-tab`, `espalier://tab/3` or `espalier://tab?n=3`.
     public init?(url: URL) {
         guard url.scheme?.lowercased() == Command.scheme, let host = url.host?.lowercased(), !host.isEmpty else { return nil }
         var argument = url.pathComponents.first { $0 != "/" }
         if argument == nil, let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
-            argument = items.first { ["n", "slot", "view", "direction", "edge"].contains($0.name.lowercased()) }?.value
+            argument = items.first { ["n", "tab", "index"].contains($0.name.lowercased()) }?.value
         }
         self.init(head: host, argument: argument?.lowercased())
     }
 
     private init?(head: String, argument: String?) {
-        let slot = argument.flatMap(Int.init).flatMap { (1...9).contains($0) ? $0 : nil }
-        let edge = argument.flatMap(Edge.init(rawValue:)) ?? argument.flatMap(Command.edgeAliases)
         switch head {
-        case "arrange": self = .arrange
-        case "relayout": self = .relayout
-        case "back": self = .back
-        case "forward": self = .forward
-        case "zoom-out": self = .zoomOut
-        case "zoom-in": self = .zoomIn
-        case "overview": self = .overview
-        case "maximize": self = .maximize
-        case "toggle-float": self = .toggleFloat
         case "next-tab": self = .nextTab
         case "previous-tab": self = .previousTab
-        case "focus":
-            guard let edge else { return nil }
-            self = .focus(edge)
-        case "dock":
-            guard let edge else { return nil }
-            self = .dock(edge)
-        case "view":
-            guard let slot else { return nil }
-            self = .view(slot)
-        case "save-view":
-            guard let slot else { return nil }
-            self = .saveView(slot)
+        case "ungroup": self = .ungroup
+        case "ungroup-all": self = .ungroupAll
+        case "tab":
+            guard let n = argument.flatMap(Int.init), (1...9).contains(n) else { return nil }
+            self = .tab(n)
         default:
             return nil
         }
     }
 
-    private static func edgeAliases(_ s: String) -> Edge? {
-        switch s {
-        case "up": return .top
-        case "down": return .bottom
-        default: return nil
-        }
-    }
-
     /// Every command, for menus and documentation.
     public static var all: [Command] {
-        var result: [Command] = [.arrange, .relayout, .back, .forward, .zoomOut, .zoomIn, .overview, .maximize, .toggleFloat, .nextTab, .previousTab]
-        result += Edge.allCases.map(Command.focus)
-        result += Edge.allCases.map(Command.dock)
-        result += (1...9).map(Command.view)
-        result += (1...9).map(Command.saveView)
-        return result
+        [.nextTab, .previousTab, .ungroup, .ungroupAll] + (1...9).map(Command.tab)
     }
 }
 

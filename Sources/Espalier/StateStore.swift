@@ -2,11 +2,11 @@
 import AppKit
 import EspalierCore
 
-/// Files in `~/Library/Application Support/Espalier`: `config.json` (settings) and `state.json` (layouts).
+/// Files in `~/Library/Application Support/Espalier`: `config.json` (settings) and `tabs.json` (tab groups).
 final class StateStore {
     let directory: URL
     var configURL: URL { directory.appendingPathComponent("config.json") }
-    var stateURL: URL { directory.appendingPathComponent("state.json") }
+    var stateURL: URL { directory.appendingPathComponent("tabs.json") }
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -18,6 +18,7 @@ final class StateStore {
     /// Loads the config, writing a commented-by-example default the first time. A file that
     /// can't be read falls back to the defaults and reports why.
     func loadConfig() -> (Config, String?) {
+        retireWindowManagerConfig()
         guard let data = try? Data(contentsOf: configURL) else {
             var example = Config()
             example.hotkeys = Config.defaultHotkeys
@@ -31,25 +32,37 @@ final class StateStore {
         }
     }
 
-    func loadSnapshot() -> WorkspaceSnapshot? {
+    /// The window-manager version of Espalier wrote its own settings here, with shortcuts
+    /// (⌃⌥ and arrows) that clash with Grid's. They're kept aside, and fresh settings are written.
+    private func retireWindowManagerConfig() {
+        guard let data = try? Data(contentsOf: configURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], json["metrics"] != nil
+        else { return }
+        let kept = directory.appendingPathComponent("config.window-manager.json")
+        try? FileManager.default.removeItem(at: kept)
+        try? FileManager.default.moveItem(at: configURL, to: kept)
+        logger.info("Moved the window manager's settings to config.window-manager.json")
+    }
+
+    func loadSnapshot() -> TabsSnapshot? {
         guard let data = try? Data(contentsOf: stateURL) else { return nil }
         do {
-            return try WorkspaceSnapshot.decode(data)
+            return try TabsSnapshot.decode(data)
         } catch {
-            logger.error("Couldn't read saved layouts: \(error.localizedDescription, privacy: .public)")
+            logger.error("Couldn't read saved tab groups: \(error.localizedDescription, privacy: .public)")
             // Keep the unreadable file for inspection rather than overwriting it silently.
-            let keep = directory.appendingPathComponent("state.unreadable.json")
+            let keep = directory.appendingPathComponent("tabs.unreadable.json")
             try? FileManager.default.removeItem(at: keep)
             try? FileManager.default.moveItem(at: stateURL, to: keep)
             return nil
         }
     }
 
-    func save(_ snapshot: WorkspaceSnapshot) {
+    func save(_ snapshot: TabsSnapshot) {
         do {
             try snapshot.encoded().write(to: stateURL, options: .atomic)
         } catch {
-            logger.error("Couldn't save layouts: \(error.localizedDescription, privacy: .public)")
+            logger.error("Couldn't save tab groups: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
