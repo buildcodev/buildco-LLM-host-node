@@ -149,7 +149,9 @@ struct PlacementTests {
         #expect(SideBySide.side(of: Rect(x: 1312, y: 36, width: 1368, height: 1366), in: visible) == .right)
         // A right side already narrowed for a wide left.
         #expect(SideBySide.side(of: Rect(x: 1368, y: 36, width: 1256, height: 1366), in: visible) == .right)
-        // Not halves: maximised, a quarter, a floating window.
+        // Not halves: Grid's two-thirds, a window stretched to 69%, maximised, a quarter, a floating window.
+        #expect(SideBySide.side(of: Rect(x: 0, y: 36, width: 1749, height: 1366), in: visible) == nil)
+        #expect(SideBySide.side(of: Rect(x: 0, y: 36, width: 1807, height: 1366), in: visible) == nil)
         #expect(SideBySide.side(of: Rect(x: 0, y: 30, width: 2624, height: 1367), in: visible) == nil)
         #expect(SideBySide.side(of: Rect(x: 0, y: 30, width: 1312, height: 683), in: visible) == nil)
         #expect(SideBySide.side(of: Rect(x: 400, y: 200, width: 1200, height: 1100), in: visible) == nil)
@@ -166,7 +168,15 @@ struct PlacementTests {
         #expect(SideBySide.divider(in: visible, leftNeeds: 1368, rightNeeds: 1256) == 1368)
         // Both can't fit: shared in proportion to their needs.
         #expect(abs(SideBySide.divider(in: visible, leftNeeds: 1600, rightNeeds: 1600) - 1312) < 1e-9)
-        #expect(abs(SideBySide.divider(in: visible, leftNeeds: 2000, rightNeeds: 1000) - 2624 * 2 / 3) < 1e-9)
+        #expect(abs(SideBySide.divider(in: visible, leftNeeds: 1600, rightNeeds: 1400) - 2624 * 1600 / 3000) < 1e-9)
+    }
+
+    @Test func testUnbelievableNeedsAreCapped() {
+        // A "minimum" of 1807 (69%) was learned from a window that hadn't finished resizing.
+        // It counts as 65%, so the other side keeps 35% instead of being squeezed further.
+        let divider = SideBySide.divider(in: visible, leftNeeds: 1807, rightNeeds: 0)
+        #expect(abs(divider - 2624 * SideBySide.maxShare) < 1e-9)
+        #expect(SideBySide.divider(in: visible, leftNeeds: 5000, rightNeeds: 5000) == 1312)
     }
 
     @Test func testSideFramesKeepTheirOwnTopAndHeight() {

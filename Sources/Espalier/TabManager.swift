@@ -53,6 +53,8 @@ final class TabManager: NSObject {
     private var minimized: Set<WindowID> = []
     private var lastSet: [WindowID: CFTimeInterval] = [:]
     private var settleItems: [WindowID: DispatchWorkItem] = [:]
+    /// The latest pending check of each window's width (see `confirmMinimumWidth`).
+    private var widthChecks: [WindowID: UUID] = [:]
     private var drag: DragSession?
     private var hover: Hover?
     private var restoring = false
@@ -145,7 +147,13 @@ final class TabManager: NSObject {
 
     private func restore() {
         let snapshot = store.loadSnapshot()
-        minimumWidths = snapshot?.minimumWidths ?? [:]
+        // Minimums learned before they were checked could be far too wide (Chrome at 1807 of
+        // 2624); anything beyond what one side can take is dropped.
+        let widest = displays.map(\.visibleFrame.width).max() ?? 0
+        minimumWidths = (snapshot?.minimumWidths ?? [:]).filter { $0.value <= widest * SideBySide.maxShare }
+        for (app, width) in snapshot?.minimumWidths ?? [:] where minimumWidths[app] == nil {
+            logger.info("Dropped \(app, privacy: .public)'s saved minimum width of \(width, privacy: .public)")
+        }
         for window in tracker.windows.values where window.isMinimized { minimized.insert(window.id) }
         pendingGroups = snapshot?.tabs.groups ?? []
         pendingInfo = snapshot?.windowInfo ?? [:]
@@ -238,21 +246,43 @@ final class TabManager: NSObject {
         parked.insert(id)
     }
 
-    /// Moves a window and returns where it ended up. A window that won't get as narrow as
-    /// asked teaches its app's minimum width.
+    /// Moves a window and returns where it says it is straight away. Apps often finish
+    /// resizing a moment later, so whether it went as narrow as asked is checked then.
     @discardableResult
     private func setFrame(_ id: WindowID, _ frame: Rect) -> Rect? {
         guard let w = tracker.windows[id] else { return nil }
         parked.remove(id)
         lastSet[id] = CACurrentMediaTime()
         withoutEnhancedUserInterface(pid: w.pid) { w.element.setFrame(frame.cgRect) }
-        guard let actual = w.frame else { return nil }
-        if actual.width > frame.width + 4, (minimumWidths[w.bundleID] ?? 0) < actual.width {
-            logger.info("\(w.bundleID, privacy: .public) won't go narrower than \(actual.width, privacy: .public)")
-            minimumWidths[w.bundleID] = actual.width
-            scheduleSave()
+        confirmMinimumWidth(of: id, asked: frame)
+        return w.frame
+    }
+
+    /// Half a second after putting a window at `asked`: if it's still where it was put but
+    /// wider, that's as narrow as its app goes. Reading the width straight away saw apps
+    /// (Chrome) that hadn't finished resizing, and learned their old width as a minimum.
+    private func confirmMinimumWidth(of id: WindowID, asked: Rect) {
+        let check = UUID()
+        widthChecks[id] = check
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.widthChecks[id] == check else { return }
+            self.widthChecks[id] = nil
+            guard !self.parked.contains(id), self.drag == nil, NSEvent.pressedMouseButtons & 1 == 0,
+                  let w = self.tracker.windows[id], let frame = w.frame,
+                  frame.width > asked.width + 4, frame.width > (self.minimumWidths[w.bundleID] ?? 0) + 4,
+                  // Still where it was put: nothing else (the user, Grid) has moved it since.
+                  abs(frame.x - asked.x) <= 4, abs(frame.y - asked.y) <= 4,
+                  let display = self.displays.best(for: frame)
+            else { return }
+            guard frame.width <= display.visibleFrame.width * SideBySide.maxShare else {
+                logger.info("Not taking \(frame.width, privacy: .public) as \(w.bundleID, privacy: .public)'s minimum width: too wide to be one")
+                return
+            }
+            logger.info("\(w.bundleID, privacy: .public) won't go narrower than \(frame.width, privacy: .public)")
+            self.minimumWidths[w.bundleID] = frame.width
+            self.scheduleSave()
+            self.rebalance(containing: id)
         }
-        return actual
     }
 
     /// Apps with AXEnhancedUserInterface on (set by assistive tools) animate every frame
@@ -542,13 +572,9 @@ final class TabManager: NSObject {
         guard config.widenSides, let region = region(of: id), let display = displays.best(for: region),
               let side = SideBySide.side(of: region, in: display.visibleFrame)
         else { return }
-        // An app that stayed wider than the half it was given won't go narrower.
-        let shown = tabs.group(containing: id)?.active ?? id
-        if let w = tracker.windows[shown], region.width > display.visibleFrame.width / 2 + 4,
-           region.width > (minimumWidths[w.bundleID] ?? 0) {
-            minimumWidths[w.bundleID] = region.width
-            logger.info("\(w.bundleID, privacy: .public) needs \(region.width, privacy: .public) of a half")
-        }
+        // Its width isn't taken as a minimum here: a window wider than half may just have been
+        // made that wide. Rebalancing asks for the widths it wants, and a window that refuses
+        // one teaches its minimum then (see `confirmMinimumWidth`).
         sides[display.uuid, default: [:]][side] = id
         rebalance(display)
     }
@@ -565,7 +591,7 @@ final class TabManager: NSObject {
 
     /// Moves the line between a display's two halves so a side that needs more than half
     /// gets it, and narrows the other side to match.
-    private func rebalance(_ display: Display, again: Bool = true) {
+    private func rebalance(_ display: Display) {
         let visible = display.visibleFrame
         var occupants: [Side: (id: WindowID, region: Rect)] = [:]
         for side in Side.allCases {
@@ -586,15 +612,12 @@ final class TabManager: NSObject {
         guard !occupants.isEmpty else { return }
         let divider = SideBySide.divider(in: visible, leftNeeds: occupants[.left].map { need(of: $0.id) } ?? 0,
                                          rightNeeds: occupants[.right].map { need(of: $0.id) } ?? 0)
-        let learnedBefore = minimumWidths
         for (side, occupant) in occupants {
             let target = SideBySide.frame(for: side, keeping: occupant.region, in: visible, divider: divider)
             guard !target.isApproximatelyEqual(to: occupant.region, tolerance: 2) else { continue }
             logger.info("Side \(side.rawValue, privacy: .public) of \(display.uuid, privacy: .public) → \(target, privacy: .public)")
             place(occupant.id, region: target)
         }
-        // A window that refused its new width taught us its minimum: share again once.
-        if again, minimumWidths != learnedBefore { rebalance(display, again: false) }
     }
 
     /// The frontmost window or group snapped to `side`, by its place on screen.

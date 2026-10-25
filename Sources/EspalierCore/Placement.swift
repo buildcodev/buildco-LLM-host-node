@@ -47,13 +47,17 @@ public enum Side: String, Codable, Sendable, CaseIterable {
 /// Two windows snapped side by side (by Grid, for example), where one of them may need
 /// more than half the width.
 public enum SideBySide {
-    /// The half a frame looks snapped to: nearly the display's full height, between about
-    /// a third and three quarters of its width, against the left edge (left), or starting
-    /// at the middle or ending at the right edge (right). An app that wouldn't shrink to
-    /// half still counts, since it keeps the edge it was put against.
+    /// The most of a display's width one side can take, and the widest minimum width that's
+    /// believable. Grid's two-thirds (67%) is deliberately more, so it's never taken for a half.
+    public static let maxShare = 0.65
+
+    /// The half a frame looks snapped to: nearly the display's full height, between a third
+    /// and `maxShare` of its width, against the left edge (left), or starting at the middle
+    /// or ending at the right edge (right). An app that wouldn't shrink to half (Outlook,
+    /// 52%) still counts, since it keeps the edge it was put against.
     public static func side(of frame: Rect, in visible: Rect, tolerance: Double = 16) -> Side? {
         guard frame.height >= visible.height * 0.85,
-              frame.width >= visible.width * 0.3, frame.width <= visible.width * 0.75
+              frame.width >= visible.width * 0.3, frame.width <= visible.width * maxShare + 1
         else { return nil }
         if abs(frame.minX - visible.minX) <= tolerance { return .left }
         if abs(frame.minX - visible.midX) <= tolerance || abs(frame.maxX - visible.maxX) <= tolerance { return .right }
@@ -63,9 +67,11 @@ public enum SideBySide {
     /// Where the two halves meet. Normally the middle. When one side needs more than half
     /// (an app that won't get narrower), the line moves to give it that, as long as the
     /// other side keeps what it needs. When both can't fit, the width is shared in
-    /// proportion to what each needs.
+    /// proportion to what each needs. A need beyond `maxShare` of the width isn't believable
+    /// and counts as `maxShare`.
     public static func divider(in visible: Rect, leftNeeds: Double, rightNeeds: Double) -> Double {
-        let left = max(0, leftNeeds), right = max(0, rightNeeds)
+        let cap = visible.width * maxShare
+        let left = min(max(0, leftNeeds), cap), right = min(max(0, rightNeeds), cap)
         if left + right <= visible.width {
             return min(max(visible.midX, visible.minX + left), visible.maxX - right)
         }
